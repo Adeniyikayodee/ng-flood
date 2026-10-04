@@ -9,6 +9,7 @@ import os
 import sys
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from .assess import COVER_KM, NOTICE, Assessment
@@ -27,22 +28,30 @@ def main(argv: list[str] | None = None) -> int:
         metavar="CSV",
         help="check every row of a CSV with id, lat and lng columns; prints one JSON record a line",
     )
+    parser.add_argument(
+        "--evidence",
+        metavar="DIR",
+        type=Path,
+        help="save the KML of every forecast area that holds a site, named by its SHA-256",
+    )
     args = parser.parse_args(argv)
     if (args.sites is None) == (args.lat is None or args.lng is None):
         parser.error("give LAT LNG or --sites CSV")
     sites: list[Site] | str = [("", args.lat, args.lng)]
-    if args.sites:
-        try:
+    try:
+        if args.evidence:
+            args.evidence.mkdir(parents=True, exist_ok=True)
+        if args.sites:
             with open(args.sites, newline="", encoding="utf-8-sig") as file:
                 sites = read_sites(file)
-        except OSError as error:
-            sites = str(error)
+    except OSError as error:
+        sites = str(error)
     key = os.environ.get("GOOGLE_FLOOD_API_KEY")
     if isinstance(sites, str) or not key:
         print(sites if isinstance(sites, str) else "set GOOGLE_FLOOD_API_KEY", file=sys.stderr)
         return 2
     now = datetime.now(UTC)
-    with Client(key, os.environ.get("NG_POSTCODE_API_KEY")) as client:
+    with Client(key, os.environ.get("NG_POSTCODE_API_KEY"), evidence=args.evidence) as client:
         results = client.assess_many([(lat, lng) for _, lat, lng in sites], now)
     rows = results if isinstance(results, list) else [results] * len(sites)
     if args.sites:

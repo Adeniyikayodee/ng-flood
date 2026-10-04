@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import math
 from datetime import UTC, datetime
+from functools import partial
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
-from test_client import STATUS, Handler, server
+from test_client import KML, STATUS, Handler, server
 
 from ng_flood import Assessment, Client, Failure
 from ng_flood.cli import main, read_sites, records
@@ -43,10 +45,8 @@ def test_an_outage_is_logged_for_every_site(
 ) -> None:
     def go(handler: Handler) -> tuple[int, list[dict[str, Any]]]:
         http = httpx.Client(transport=httpx.MockTransport(handler))
-        monkeypatch.setattr(
-            "ng_flood.cli.Client", lambda key, nipost: Client(key, nipost, http=http)
-        )
-        code = main(["--sites", str(sites)])
+        monkeypatch.setattr("ng_flood.cli.Client", partial(Client, http=http))
+        code = main(["--sites", str(sites), "--evidence", str(tmp_path / "kml")])
         return code, [json.loads(line) for line in capsys.readouterr().out.splitlines()]
 
     monkeypatch.setenv("GOOGLE_FLOOD_API_KEY", "google")
@@ -62,6 +62,9 @@ def test_an_outage_is_logged_for_every_site(
         "FORECAST",
         "not a coordinate in Nigeria",
     )
+    assert rows[0]["areas"] == {"here": sha256(KML["here"].encode()).hexdigest()}
+    assert (tmp_path / "kml" / f"{rows[0]['areas']['here']}.kml").read_text() == KML["here"]
+    assert (rows[0]["version"], rows[0]["cover_km"], rows[0]["stale_hours"]) == ("0.1.0", 50, 48)
     sites.write_text("id,lat,lng\nhh-2,north,7.0\n")
     assert go(server([STATUS]))[0] == 1
 

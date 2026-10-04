@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
+from importlib.metadata import version
 from math import asin, cos, radians, sin, sqrt
 from typing import Any
 
@@ -94,6 +95,8 @@ class Assessment:
     nearest_gauge_km: float | None = None
     notes: tuple[str, ...] = ()
     """Gaps too far away to change the verdict."""
+    areas: Mapping[str, str | None] = field(default_factory=dict)
+    """Every forecast area that holds the point, by id, with the SHA-256 of its KML."""
 
     @property
     def verdict(self) -> str:
@@ -113,7 +116,14 @@ class Assessment:
     def as_dict(self) -> dict[str, Any]:
         """A JSON-ready record of the verdict and the evidence behind it."""
         data: dict[str, Any] = json.loads(json.dumps(asdict(self), default=datetime.isoformat))
-        return data | {"verdict": self.verdict, "lead_hours": self.lead_hours, "notice": NOTICE}
+        return data | {
+            "verdict": self.verdict,
+            "lead_hours": self.lead_hours,
+            "version": version("ng-flood"),
+            "cover_km": COVER_KM,
+            "stale_hours": STALE.total_seconds() / 3600,
+            "notice": NOTICE,
+        }
 
 
 def select(
@@ -127,7 +137,12 @@ def select(
 
 
 def assess(
-    lat: float, lng: float, selection: Selection, polygons: Polygons, gaps: tuple[str, ...] = ()
+    lat: float,
+    lng: float,
+    selection: Selection,
+    polygons: Polygons,
+    gaps: tuple[str, ...] = (),
+    digests: Mapping[str, str] | None = None,
 ) -> Assessment:
     def inside(pid: str | None) -> bool:
         area = polygons.get(pid) if pid else None
@@ -193,6 +208,7 @@ def assess(
             *_some(far_stale, f"stale forecasts {beyond}"),
             *_some(far, f"forecast areas unavailable {beyond}"),
         ),
+        areas={pid: (digests or {}).get(pid) for pid in selection.polygon_ids if inside(pid)},
     )
 
 

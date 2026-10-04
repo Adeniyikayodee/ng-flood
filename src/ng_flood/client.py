@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from hashlib import sha256
 from importlib.resources import files
 from math import isfinite
+from pathlib import Path
 from time import sleep
 from typing import Any, TypeVar
 from urllib.parse import quote
@@ -56,12 +58,19 @@ def _retry_after(response: httpx.Response) -> float:
 class Client:
     """Blocking client. Pass `http` to reuse your own `httpx.Client`; it stays yours to close.
 
-    Without `nipost_key` the assessment carries no postcode.
+    Without `nipost_key` the assessment carries no postcode. With `evidence`, the KML of
+    every area that holds a point is saved in that directory, named by its SHA-256.
     """
 
     def __init__(
-        self, google_key: str, nipost_key: str | None = None, *, http: httpx.Client | None = None
+        self,
+        google_key: str,
+        nipost_key: str | None = None,
+        *,
+        http: httpx.Client | None = None,
+        evidence: Path | None = None,
     ) -> None:
+        self._evidence = evidence
         self._http = http if http is not None else httpx.Client(timeout=TIMEOUT)
         self._owns_http = http is None
         self._headers = {"X-Goog-Api-Key": google_key}
@@ -96,15 +105,22 @@ class Client:
             gaps.append(f"{flashes[1]} flash forecasts unreadable")
         now = now or datetime.now(UTC)
         polygons: dict[str, tuple[Polygon, ...] | None] = {}
+        kml: dict[str, str] = {}
+        digests: dict[str, str] = {}
         for i in inside:
             lat, lng = points[i]
             selection = select(lat, lng, statuses[0], flashes[0], now)
             for pid in selection.polygon_ids:
                 if pid not in polygons:
-                    polygons[pid] = self._polygon(pid)
+                    kml[pid] = self._kml(pid) or ""
+                    polygons[pid] = parse_kml(kml[pid])
+                    digests[pid] = sha256(kml[pid].encode()).hexdigest()
             postcode, area = self._label(lat, lng)
-            result = assess(lat, lng, selection, polygons, tuple(gaps))
+            result = assess(lat, lng, selection, polygons, tuple(gaps), digests)
             results[i] = replace(result, postcode=postcode, area=area)
+            if self._evidence:
+                for pid in result.areas:
+                    (self._evidence / f"{digests[pid]}.kml").write_text(kml[pid], encoding="utf-8")
         return results
 
     def close(self) -> None:
@@ -135,9 +151,9 @@ class Client:
                 return items, skipped
         return Failure(f"more than {MAX_PAGES} pages from {path}")
 
-    def _polygon(self, polygon_id: str) -> tuple[Polygon, ...] | None:
+    def _kml(self, polygon_id: str) -> str | None:
         raw = self._call("GET", google.POLYGON_PATH + quote(polygon_id, safe=""))
-        return None if isinstance(raw, Failure) else google.polygon(raw)
+        return None if isinstance(raw, Failure) else google.kml(raw)
 
     def _call(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any | Failure:
         for wait in (*WAITS, None):

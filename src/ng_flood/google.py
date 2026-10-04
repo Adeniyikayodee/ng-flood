@@ -10,8 +10,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Generic, TypeVar
 
-from .geometry import Polygon, parse_kml
-
 T = TypeVar("T")
 
 BASE_URL = "https://floodforecasting.googleapis.com"
@@ -66,9 +64,8 @@ def flashes(body: Any) -> Page[Flash] | None:
     return _page(body, "flashFloodEvents", _flash)
 
 
-def polygon(body: Any) -> tuple[Polygon, ...] | None:
-    kml = _text(body, "kml") if isinstance(body, Mapping) else None
-    return parse_kml(kml) if kml else None
+def kml(body: Any) -> str | None:
+    return _text(body, "kml") if isinstance(body, Mapping) else None
 
 
 def _page(body: Any, key: str, read: Callable[[Any], T | None]) -> Page[T] | None:
