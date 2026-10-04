@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from importlib.resources import files
 from math import isfinite
+from time import sleep
 from typing import Any, TypeVar
 from urllib.parse import quote
 
@@ -22,6 +23,9 @@ T = TypeVar("T")
 
 TIMEOUT = 10.0
 MAX_PAGES = 10
+WAITS = (0.5, 2.0)
+"""Seconds before each retry of a 429, a 5xx or a network error."""
+MAX_WAIT = 30.0
 REVERSE_M = 250.0
 _NIGERIA = parse_kml(files("ng_flood").joinpath("nigeria.kml").read_text()) or ()
 """The border, about 10 km generous so border and coastal sites pass."""
@@ -39,6 +43,13 @@ class Failure:
 
 def _in_nigeria(lat: float, lng: float) -> bool:
     return isfinite(lat) and isfinite(lng) and contains(_NIGERIA, lat, lng)
+
+
+def _retry_after(response: httpx.Response) -> float:
+    try:
+        return min(float(response.headers.get("Retry-After", 0)), MAX_WAIT)
+    except ValueError:
+        return 0.0
 
 
 class Client:
@@ -128,18 +139,27 @@ class Client:
         return None if isinstance(raw, Failure) else google.polygon(raw)
 
     def _call(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any | Failure:
-        try:
-            response = self._http.request(
-                method, google.BASE_URL + path, json=body, headers=self._headers
-            )
-        except httpx.HTTPError as error:
-            return Failure(type(error).__name__)
-        if response.status_code != 200:
-            return Failure(f"HTTP {response.status_code} from {path}")
-        try:
-            return response.json()
-        except ValueError:
-            return Failure(f"unreadable body from {path}")
+        for wait in (*WAITS, None):
+            try:
+                response = self._http.request(
+                    method, google.BASE_URL + path, json=body, headers=self._headers
+                )
+            except httpx.HTTPError as error:
+                failure = Failure(type(error).__name__)
+            else:
+                if response.status_code == 200:
+                    try:
+                        return response.json()
+                    except ValueError:
+                        return Failure(f"unreadable body from {path}")
+                failure = Failure(f"HTTP {response.status_code} from {path}")
+                if response.status_code != 429 and response.status_code < 500:
+                    return failure
+                wait = wait and max(wait, _retry_after(response))
+            if wait is None:
+                break
+            sleep(wait)
+        return failure
 
     def _label(self, lat: float, lng: float) -> tuple[str | None, str | None]:
         if self._nipost is None:

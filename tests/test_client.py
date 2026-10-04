@@ -230,6 +230,24 @@ def test_follows_pages_and_names_no_key_on_network_failure() -> None:
     assert run(down) == Failure("ConnectError")
 
 
+def test_retries_a_busy_server_then_gives_up(waits: list[float]) -> None:
+    replies = [httpx.Response(503), httpx.Response(429, headers={"Retry-After": "5"})]
+
+    def busy(request: httpx.Request) -> httpx.Response:
+        if "floodStatus" in request.url.path and replies:
+            return replies.pop(0)
+        return server([STATUS])(request)
+
+    assert ok(run(busy)).verdict == "FORECAST"
+    assert waits == [0.5, 5.0]
+    waits.clear()
+    assert isinstance(run(server(broken=("floodStatus",))), Failure)
+    assert waits == [0.5, 2.0]
+    waits.clear()
+    assert isinstance(run(lambda request: httpx.Response(403)), Failure)
+    assert waits == []
+
+
 def test_reports_lead_time_and_the_evidence_for_an_audit() -> None:
     window = {"start": "2026-10-06T12:00:00Z", "end": "2026-10-07T12:00:00Z"}
     change = {"valueChange": {"lowerBound": 0.4, "upperBound": 0.9}}
