@@ -81,6 +81,16 @@ def test_reports_the_highest_area_that_holds_the_point() -> None:
     assert "KG-05-A12-FK" in render(found)
 
 
+def test_severity_outranks_level_across_gauges() -> None:
+    mild = STATUS | {"gaugeId": "g2", "severity": "ABOVE_NORMAL"}
+    mild["inundationMapSet"] = {
+        "inundationMaps": [{"level": "HIGH", "serializedPolygonId": "here"}]
+    }
+    found = ok(run(server([mild, STATUS]))).riverine
+    assert found is not None
+    assert (found.gauge_id, found.level) == ("g1", "LOW")
+
+
 def test_alert_area_counts_when_no_map_holds_the_point() -> None:
     status = STATUS | {"inundationMapSet": {}, "serializedNotificationPolygonId": "here"}
     found = ok(run(server([status])))

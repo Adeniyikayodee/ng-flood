@@ -210,8 +210,8 @@ def _areas(status: Status) -> list[tuple[str, str]]:
 
 
 def _rank(hit: Riverine) -> tuple[int, int]:
-    severity = hit.severity if hit.severity in _SEVERITIES else None
-    return _LEVELS.index(hit.level), _SEVERITIES.index(severity) if severity else len(_SEVERITIES)
+    known = hit.severity in _SEVERITIES
+    return _SEVERITIES.index(hit.severity) if known else len(_SEVERITIES), _LEVELS.index(hit.level)
 
 
 def _km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
