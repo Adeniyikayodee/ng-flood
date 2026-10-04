@@ -51,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("give LAT LNG or --sites CSV")
     if args.keep and not args.sites:
         parser.error("--keep needs --sites")
+    if args.json and args.sites:
+        parser.error("--sites always prints JSON; drop --json")
     sites: list[Site] | str = [("", args.lat, args.lng, {})]
     try:
         if args.evidence:

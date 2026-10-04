@@ -87,6 +87,12 @@ def test_usage_errors_exit_2_before_any_call(
     bad.write_text("name\na\n")
     assert main(["--sites", str(bad)]) == 2
     assert "no column named id or lat or lng" in capsys.readouterr().err
-    for argv in ([], ["8.0"], ["8.0", "7.0", "--sites", str(bad)], ["8.0", "7.0", "--keep", "lga"]):
+    for argv in (
+        [],
+        ["8.0"],
+        ["8.0", "7.0", "--sites", str(bad)],
+        ["8.0", "7.0", "--keep", "lga"],
+        ["--sites", str(bad), "--json"],
+    ):
         with pytest.raises(SystemExit):
             main(argv)
