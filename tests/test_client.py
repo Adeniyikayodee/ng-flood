@@ -111,6 +111,18 @@ def test_a_stale_forecast_is_a_gap() -> None:
     assert found.gaps == ("1 stale forecasts ignored",)
 
 
+def test_a_gap_too_far_to_matter_is_only_a_note() -> None:
+    there = {"gaugeLocation": {"latitude": 8.6, "longitude": 7.0}}
+    old = DRY | there | {"issuedTime": "2026-09-30T06:00:00Z"}
+    found = ok(run(server([DRY] * 30 + [old, STATUS | there], broken=("serializedPolygons/",))))
+    assert (found.verdict, found.gaps) == ("NONE", ())
+    assert found.notes == (
+        "1 stale forecasts beyond 50 km",
+        "2 forecast areas unavailable beyond 50 km",
+    )
+    assert "Note:     1 stale" in render(found)
+
+
 def test_a_missing_polygon_is_a_gap_not_dry_land() -> None:
     found = ok(run(server([STATUS], broken=("serializedPolygons/here",))))
     assert found.verdict == "UNKNOWN"

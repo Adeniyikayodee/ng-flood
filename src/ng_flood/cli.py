@@ -101,6 +101,7 @@ def render(a: Assessment) -> str:
             else []
         ),
         *(f"Gap:      {gap}" for gap in a.gaps),
+        *(f"Note:     {note}" for note in a.notes),
         NOTICE,
     ]
     return "\n".join(lines)

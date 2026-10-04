@@ -39,7 +39,8 @@ class Selection:
 
     statuses: tuple[Status, ...]
     flashes: tuple[Flash, ...]
-    stale: int
+    stale: tuple[int, int]
+    """Stale gauges within COVER_KM, and beyond it."""
     now: datetime
 
     @property
@@ -86,10 +87,13 @@ class Assessment:
     gauges: int
     """Fresh gauges of known severity within COVER_KM."""
     gaps: tuple[str, ...]
+    """What stops a NONE: anything stale, missing or unreadable that could reach the point."""
     postcode: str | None = None
     area: str | None = None
     watch: Watch | None = None
     nearest_gauge_km: float | None = None
+    notes: tuple[str, ...] = ()
+    """Gaps too far away to change the verdict."""
 
     @property
     def verdict(self) -> str:
@@ -115,10 +119,11 @@ class Assessment:
 def select(
     lat: float, lng: float, statuses: tuple[Status, ...], flashes: tuple[Flash, ...], now: datetime
 ) -> Selection:
-    near = [s for s in statuses if _km(lat, lng, s.lat, s.lng) <= RANGE_KM]
-    fresh = tuple(s for s in near if s.issued and now - s.issued <= STALE)
+    near = [(km, s) for s in statuses if (km := _km(lat, lng, s.lat, s.lng)) <= RANGE_KM]
+    fresh = tuple(s for _, s in near if _fresh(s, now))
+    old = [km <= COVER_KM for km, s in near if not _fresh(s, now)]
     live = tuple(f for f in flashes if now <= f.issued + timedelta(hours=f.period_hours))
-    return Selection(fresh, live, len(near) - len(fresh), now)
+    return Selection(fresh, live, (sum(old), len(old) - sum(old)), now)
 
 
 def assess(
@@ -159,15 +164,15 @@ def assess(
         ),
         None,
     )
-    missing = sum(polygons.get(pid) is None for pid in selection.polygon_ids)
-    notes = [
-        *gaps,
-        *([f"{selection.stale} stale forecasts ignored"] if selection.stale else []),
-        *([f"{missing} forecast areas unavailable"] if missing else []),
-    ]
+    close = [s for s in selection.statuses if km(s) <= COVER_KM]
+    near_ids = {pid for s in close for _, pid in _areas(s)}
+    far_ids = {pid for s in selection.statuses for _, pid in _areas(s)} - near_ids
+    missing = [pid for pid in selection.polygon_ids if polygons.get(pid) is None]
+    far = sum(pid in far_ids for pid in missing)
+    stale, far_stale = selection.stale
+    beyond = f"beyond {COVER_KM:g} km"
     worst = min(hits, key=_rank, default=None)
     known = sorted(km(s) for s in selection.statuses if s.severity in _KNOWN)
-    close = [s for s in selection.statuses if km(s) <= COVER_KM]
     blind = [s for s in close if s.severity in _SEVERITIES and not _areas(s)]
     risen = min(blind, key=lambda s: (_SEVERITIES.index(s.severity), km(s)), default=None)
     return Assessment(
@@ -177,10 +182,26 @@ def assess(
         worst,
         flash,
         sum(d <= COVER_KM for d in known),
-        tuple(notes),
+        (
+            *gaps,
+            *_some(stale, "stale forecasts ignored"),
+            *_some(len(missing) - far, "forecast areas unavailable"),
+        ),
         watch=Watch(risen.gauge_id, risen.severity, round(km(risen), 1)) if risen else None,
         nearest_gauge_km=round(known[0], 1) if known else None,
+        notes=(
+            *_some(far_stale, f"stale forecasts {beyond}"),
+            *_some(far, f"forecast areas unavailable {beyond}"),
+        ),
     )
+
+
+def _fresh(status: Status, now: datetime) -> bool:
+    return status.issued is not None and now - status.issued <= STALE
+
+
+def _some(n: int, what: str) -> list[str]:
+    return [f"{n} {what}"] if n else []
 
 
 def _areas(status: Status) -> list[tuple[str, str]]:
