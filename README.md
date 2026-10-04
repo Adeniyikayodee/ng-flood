@@ -3,6 +3,27 @@
 Google's flood forecast for a Nigerian coordinate, labelled with its NIPOST
 postcode area.
 
+![ng-flood answering three coordinates: a forecast, none, and unknown](docs/demo.gif)
+
+The recording shows the real program on sample data.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Coordinate] --> B[NIPOST reverse geocode]
+    A --> C[Google riverine forecasts<br/>gauges within 150 km]
+    A --> D[Google flash flood forecasts]
+    C --> E[Is the point inside<br/>a forecast area?]
+    D --> E
+    B --> F[Postcode area label]
+    E --> G{Verdict}
+    F --> G
+    G --> H[FORECAST]
+    G --> I[NONE]
+    G --> J[UNKNOWN<br/>anything stale or missing]
+```
+
 ## Use it
 
 Nothing to install: [uv](https://docs.astral.sh/uv/) fetches and runs it.
@@ -11,13 +32,6 @@ Nothing to install: [uv](https://docs.astral.sh/uv/) fetches and runs it.
 export GOOGLE_FLOOD_API_KEY=...   # required
 export NG_POSTCODE_API_KEY=...    # optional, adds the postcode area
 uvx ng-flood 7.8023 6.7333        # add --json for machine output
-```
-
-```
-Verdict:  FORECAST
-Area:     KG-05-A12-FK
-Riverine: inside LOW area of gauge g1, SEVERE, trend RISE
-Flash:    none forecast (20 km cells)
 ```
 
 From an AI assistant, as an MCP server with one tool, `check_flood_forecast`:
