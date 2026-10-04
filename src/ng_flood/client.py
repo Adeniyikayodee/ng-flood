@@ -22,7 +22,8 @@ from .geometry import Polygon, contains, parse_kml
 T = TypeVar("T")
 
 TIMEOUT = 10.0
-MAX_PAGES = 10
+MAX_PAGES = 100
+"""A guard against a token that never ends, not a limit on the data."""
 WAITS = (0.5, 2.0)
 """Seconds before each retry of a 429, a 5xx or a network error."""
 MAX_WAIT = 30.0

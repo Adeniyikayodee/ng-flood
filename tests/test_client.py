@@ -224,6 +224,11 @@ def test_follows_pages_and_names_no_key_on_network_failure() -> None:
     assert ok(run(paged)).gauges == 2
     assert b'"pageToken":"t"' in calls[1]
 
+    def endless(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"floodStatuses": [], "nextPageToken": "t"})
+
+    assert str(run(endless)).startswith("more than 100 pages")
+
     def down(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("refused google", request=request)
 
