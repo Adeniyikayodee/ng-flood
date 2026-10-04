@@ -3,7 +3,7 @@
 Google's flood forecast for a Nigerian coordinate, labelled with its NIPOST
 postcode area.
 
-![ng-flood answering three coordinates: a forecast, none, and unknown](docs/demo.gif)
+![ng-flood checking one coordinate with its lead time, then a CSV of three sites](docs/demo.gif)
 
 The recording shows the real program on sample data.
 
