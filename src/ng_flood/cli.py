@@ -10,7 +10,7 @@ import sys
 from collections.abc import Iterator
 from typing import Any
 
-from .assess import NOTICE, Assessment
+from .assess import COVER_KM, NOTICE, Assessment
 from .client import Client, Failure
 
 Site = tuple[str, float, float]
@@ -83,7 +83,7 @@ def render(a: Assessment) -> str:
     river = (
         f"inside {r.level} area of gauge {r.gauge_id}, {r.severity}, trend {r.trend or 'unknown'}"
         if r
-        else f"not inside a forecast area ({a.gauges} gauge{'s' * (a.gauges != 1)} within range)"
+        else f"not inside an area ({a.gauges} gauge{'s' * (a.gauges != 1)} within {COVER_KM:g} km)"
     )
     lines = [
         f"Verdict:  {a.verdict}",

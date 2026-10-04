@@ -93,6 +93,16 @@ def test_none_needs_a_fresh_gauge_in_range_and_no_gaps() -> None:
     assert ok(run(server([]))).verdict == "UNKNOWN"
     far = DRY | {"gaugeLocation": {"latitude": 12.5, "longitude": 13.0}}
     assert ok(run(server([far]))).verdict == "UNKNOWN"
+    assert ok(run(server([DRY | {"severity": "UNKNOWN"}]))).verdict == "UNKNOWN"
+
+
+def test_a_gauge_beyond_cover_does_not_make_none() -> None:
+    there = DRY | {"gaugeLocation": {"latitude": 8.6, "longitude": 7.0}}
+    found = ok(run(server([there])))
+    assert (found.verdict, found.gauges, found.nearest_gauge_km) == ("UNKNOWN", 0, 66.7)
+    assert ok(run(server([there, DRY]))).nearest_gauge_km == 15.6
+    severe = there | {"severity": "SEVERE"}
+    assert ok(run(server([severe]))).watch is None
 
 
 def test_a_stale_forecast_is_a_gap() -> None:
@@ -220,7 +230,7 @@ def test_a_batch_downloads_the_forecasts_once() -> None:
         results = client.assess_many([(LAT, LNG), (51.5, 0.0), (8.5, 7.5), (9.2, 7.0)], NOW)
     assert not isinstance(results, Failure)
     verdicts = [r.verdict if isinstance(r, Assessment) else str(r) for r in results]
-    assert verdicts == ["FORECAST", "not a coordinate in Nigeria", "FORECAST", "NONE"]
+    assert verdicts == ["FORECAST", "not a coordinate in Nigeria", "FORECAST", "UNKNOWN"]
     assert sorted(paths) == sorted(
         [
             "/v1/floodStatus:searchLatestFloodStatusByArea",

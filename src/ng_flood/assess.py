@@ -18,10 +18,13 @@ from .google import Flash, Status
 
 RANGE_KM = 150.0
 """Inundation maps reach tens of km from their gauge; this leaves a wide margin."""
+COVER_KM = 50.0
+"""NONE needs a fresh gauge this close. Provisional until checked against live data."""
 STALE = timedelta(hours=48)
 ALERT_AREA = "ALERT_AREA"
 _LEVELS = ("HIGH", "MEDIUM", "LOW", ALERT_AREA)
 _SEVERITIES = ("EXTREME", "SEVERE", "ABOVE_NORMAL")
+_KNOWN = (*_SEVERITIES, "NO_FLOODING")
 NOTICE = (
     "Forecast: Google Flood Forecasting, CC BY 4.0. Not an official warning; "
     "follow NEMA and NIHSA. Postcode: NIPOST."
@@ -81,10 +84,12 @@ class Assessment:
     flash: str | None
     """HIGHLY_LIKELY or LIKELY, at 20 km resolution."""
     gauges: int
+    """Fresh gauges of known severity within COVER_KM."""
     gaps: tuple[str, ...]
     postcode: str | None = None
     area: str | None = None
     watch: Watch | None = None
+    nearest_gauge_km: float | None = None
 
     @property
     def verdict(self) -> str:
@@ -161,11 +166,20 @@ def assess(
         *([f"{missing} forecast areas unavailable"] if missing else []),
     ]
     worst = min(hits, key=_rank, default=None)
-    blind = [s for s in selection.statuses if s.severity in _SEVERITIES and not _areas(s)]
+    known = sorted(km(s) for s in selection.statuses if s.severity in _KNOWN)
+    close = [s for s in selection.statuses if km(s) <= COVER_KM]
+    blind = [s for s in close if s.severity in _SEVERITIES and not _areas(s)]
     risen = min(blind, key=lambda s: (_SEVERITIES.index(s.severity), km(s)), default=None)
-    watch = Watch(risen.gauge_id, risen.severity, round(km(risen), 1)) if risen else None
     return Assessment(
-        lat, lng, selection.now, worst, flash, len(selection.statuses), tuple(notes), watch=watch
+        lat,
+        lng,
+        selection.now,
+        worst,
+        flash,
+        sum(d <= COVER_KM for d in known),
+        tuple(notes),
+        watch=Watch(risen.gauge_id, risen.severity, round(km(risen), 1)) if risen else None,
+        nearest_gauge_km=round(known[0], 1) if known else None,
     )
 
 
