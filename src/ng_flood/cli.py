@@ -15,7 +15,7 @@ from typing import Any
 from .assess import COVER_KM, NOTICE, Assessment
 from .client import Client, Failure
 
-Site = tuple[str, float, float]
+Site = tuple[str, float, float, dict[str, str]]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,6 +27,13 @@ def main(argv: list[str] | None = None) -> int:
         "--sites",
         metavar="CSV",
         help="check every row of a CSV with id, lat and lng columns; prints one JSON record a line",
+    )
+    parser.add_argument(
+        "--keep",
+        metavar="COLUMNS",
+        type=lambda text: text.split(","),
+        default=[],
+        help="with --sites, copy these comma-separated CSV columns into each record, e.g. lga,ward",
     )
     parser.add_argument(
         "--postcode",
@@ -42,13 +49,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if (args.sites is None) == (args.lat is None or args.lng is None):
         parser.error("give LAT LNG or --sites CSV")
-    sites: list[Site] | str = [("", args.lat, args.lng)]
+    if args.keep and not args.sites:
+        parser.error("--keep needs --sites")
+    sites: list[Site] | str = [("", args.lat, args.lng, {})]
     try:
         if args.evidence:
             args.evidence.mkdir(parents=True, exist_ok=True)
         if args.sites:
             with open(args.sites, newline="", encoding="utf-8-sig") as file:
-                sites = read_sites(file)
+                sites = read_sites(file, args.keep)
     except OSError as error:
         sites = str(error)
     key = os.environ.get("GOOGLE_FLOOD_API_KEY")
@@ -60,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     now = datetime.now(UTC)
     with Client(key, nipost, evidence=args.evidence) as client:
-        results = client.assess_many([(lat, lng) for _, lat, lng in sites], now)
+        results = client.assess_many([(lat, lng) for _, lat, lng, _ in sites], now)
     rows = results if isinstance(results, list) else [results] * len(sites)
     if args.sites:
         for record in records(sites, rows, now):
@@ -74,22 +83,25 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if any(isinstance(row, Assessment) for row in rows) else 1
 
 
-def read_sites(lines: Iterator[str]) -> list[Site] | str:
-    """Rows of a CSV with id, lat and lng columns. A number that cannot be read
-    becomes NaN, so its row fails alone instead of stopping the batch."""
+def read_sites(lines: Iterator[str], keep: Sequence[str] = ()) -> list[Site] | str:
+    """Rows of a CSV with id, lat and lng columns, and any columns to keep. A number
+    that cannot be read becomes NaN, so its row fails alone instead of stopping the batch."""
     reader = csv.DictReader(lines)
-    if not {"id", "lat", "lng"} <= set(reader.fieldnames or ()):
-        return "the CSV needs id, lat and lng columns"
-    return [(row["id"], _number(row["lat"]), _number(row["lng"])) for row in reader]
+    if lacks := {"id", "lat", "lng", *keep} - set(reader.fieldnames or ()):
+        return f"the CSV has no column named {' or '.join(sorted(lacks))}"
+    return [
+        (row["id"], _number(row["lat"]), _number(row["lng"]), {k: row[k] for k in keep})
+        for row in reader
+    ]
 
 
 def records(
     sites: list[Site], results: Sequence[Assessment | Failure], now: datetime
 ) -> Iterator[dict[str, Any]]:
     """One record a site. A failure is logged too, so a run that found nothing leaves a trace."""
-    for (site, _, _), result in zip(sites, results, strict=True):
+    for (site, _, _, kept), result in zip(sites, results, strict=True):
         error = {"error": str(result), "checked": now.isoformat()}
-        yield {"id": site} | (error if isinstance(result, Failure) else result.as_dict())
+        yield {"id": site} | kept | (error if isinstance(result, Failure) else result.as_dict())
 
 
 def _number(text: str | None) -> float:

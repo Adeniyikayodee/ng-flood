@@ -13,7 +13,7 @@ import pytest
 from test_client import KML, STATUS, Handler, server
 
 from ng_flood import Assessment, Client, Failure
-from ng_flood.cli import main, read_sites, records
+from ng_flood.cli import Site, main, read_sites, records
 
 NOW = datetime(2026, 10, 4, tzinfo=UTC)
 STAMP = "2026-10-04T00:00:00+00:00"
@@ -23,20 +23,24 @@ CSV = "id,lat,lng,village\nhh-1,8.0,7.0,Lokoja\nhh-2,north,7.0,Lokoja\n"
 def test_reads_sites_and_keeps_a_bad_row_in_place() -> None:
     sites = read_sites(iter(CSV.splitlines()))
     assert isinstance(sites, list)
-    assert sites[0] == ("hh-1", 8.0, 7.0)
+    assert sites[0] == ("hh-1", 8.0, 7.0, {})
+    assert read_sites(iter(CSV.splitlines()), ["village"])[0][3] == {"village": "Lokoja"}
     assert sites[1][0] == "hh-2"
     assert math.isnan(sites[1][1])
 
 
 def test_a_csv_without_the_columns_is_refused() -> None:
-    assert read_sites(iter(["name,latitude", "a,8.0"])) == "the CSV needs id, lat and lng columns"
+    lines = ["id,lat,lng", "a,8.0,7.0"]
+    assert read_sites(iter(lines), ["ward"]) == "the CSV has no column named ward"
+    assert read_sites(iter(["name,lat", "a,8.0"])) == "the CSV has no column named id or lng"
 
 
 def test_each_site_gets_one_record_with_its_id() -> None:
     dry = Assessment(8.0, 7.0, NOW, None, None, 1, ())
-    sites = [("hh-1", 8.0, 7.0), ("hh-2", math.nan, 7.0)]
+    sites: list[Site] = [("hh-1", 8.0, 7.0, {"lga": "Lokoja"}), ("hh-2", math.nan, 7.0, {})]
     first, second = records(sites, [dry, Failure("not a coordinate in Nigeria")], NOW)
     assert (first["id"], first["verdict"], first["lead_hours"]) == ("hh-1", "NONE", None)
+    assert first["lga"] == "Lokoja"
     assert second == {"id": "hh-2", "error": "not a coordinate in Nigeria", "checked": STAMP}
 
 
@@ -82,7 +86,7 @@ def test_usage_errors_exit_2_before_any_call(
     bad = tmp_path / "bad.csv"
     bad.write_text("name\na\n")
     assert main(["--sites", str(bad)]) == 2
-    assert "needs id, lat and lng" in capsys.readouterr().err
-    for argv in ([], ["8.0"], ["8.0", "7.0", "--sites", str(bad)]):
+    assert "no column named id or lat or lng" in capsys.readouterr().err
+    for argv in ([], ["8.0"], ["8.0", "7.0", "--sites", str(bad)], ["8.0", "7.0", "--keep", "lga"]):
         with pytest.raises(SystemExit):
             main(argv)
