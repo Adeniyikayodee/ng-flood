@@ -34,6 +34,25 @@ export NG_POSTCODE_API_KEY=...    # optional, adds the postcode area
 uvx ng-flood 7.8023 6.7333        # add --json for machine output
 ```
 
+For many sites, give a CSV with `id`, `lat` and `lng` columns. The forecasts
+are downloaded once and each row becomes one JSON record, ready to append to a
+log:
+
+```sh
+uvx ng-flood --sites households.csv >> triggers.jsonl
+```
+
+```json
+{"id": "hh-0142", "verdict": "FORECAST", "lead_hours": 48.0, "checked": "2026-10-04T12:00:00+00:00",
+ "riverine": {"gauge_id": "...", "level": "HIGH", "severity": "SEVERE", "polygon_id": "...",
+              "issued": "...", "starts": "...", "ends": "...", "change_m": [0.4, 0.9]}, "...": "..."}
+```
+
+Each record names the gauge, the forecast area, when Google issued it and when
+it was checked, so a decision made on it can be audited later. `lead_hours` is
+the time until the riverine forecast window opens. A row that cannot be read
+gets an `error` and does not stop the rest.
+
 From an AI assistant, as an MCP server with one tool, `check_flood_forecast`:
 
 ```json
@@ -77,6 +96,10 @@ if not isinstance(result, Failure):
   cells with an F1 near 0.7, and flash flood cells are about 20 km, so the
   result is reported by area, not by building.
 - Nothing from NIPOST or Google is cached or stored.
+- With a NIPOST key, every coordinate is sent to NIPOST to find its postcode.
+  Leave the key unset and no site location leaves your machine: Google's
+  forecasts are downloaded whole and compared locally. Keep names out of the
+  `id` column.
 - The decoders follow Google's published schema. They have not yet been run
   against live responses: the API is behind a
   [waitlist](https://developers.google.com/flood-forecasting).
