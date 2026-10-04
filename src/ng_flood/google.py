@@ -45,8 +45,8 @@ class Status:
 class Flash:
     """A flash flood forecast. Its cells are about 20 km wide."""
 
-    issued: datetime | None
-    period_hours: float | None
+    issued: datetime
+    period_hours: float
     likely_id: str | None
     highly_likely_id: str | None
 
@@ -122,11 +122,10 @@ def _flash(raw: Any) -> Flash | None:
         return None
     likely = _text(raw, "likelyAffectedPolygonId") or _text(raw, "eventPolygonId")
     highly = _text(raw, "highlyLikelyAffectedPolygonId")
-    if likely is None and highly is None:
+    issued, hours = _time(raw.get("forecastIssueTime")), _number(raw, "forecastPeriodHours")
+    if issued is None or hours is None or (likely is None and highly is None):
         return None
-    return Flash(
-        _time(raw.get("forecastIssueTime")), _number(raw, "forecastPeriodHours"), likely, highly
-    )
+    return Flash(issued, hours, likely, highly)
 
 
 def _object(data: Mapping[str, Any], key: str) -> Mapping[str, Any]:

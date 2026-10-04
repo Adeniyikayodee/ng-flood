@@ -117,8 +117,8 @@ def select(
 ) -> Selection:
     near = [s for s in statuses if _km(lat, lng, s.lat, s.lng) <= RANGE_KM]
     fresh = tuple(s for s in near if s.issued and now - s.issued <= STALE)
-    live = tuple(f for f in flashes if _live(f, now))
-    return Selection(fresh, live, len(near) - len(fresh) + len(flashes) - len(live), now)
+    live = tuple(f for f in flashes if now <= f.issued + timedelta(hours=f.period_hours))
+    return Selection(fresh, live, len(near) - len(fresh), now)
 
 
 def assess(
@@ -191,12 +191,6 @@ def _areas(status: Status) -> list[tuple[str, str]]:
 def _rank(hit: Riverine) -> tuple[int, int]:
     severity = hit.severity if hit.severity in _SEVERITIES else None
     return _LEVELS.index(hit.level), _SEVERITIES.index(severity) if severity else len(_SEVERITIES)
-
-
-def _live(flash: Flash, now: datetime) -> bool:
-    if flash.issued is None or flash.period_hours is None:
-        return False
-    return now <= flash.issued + timedelta(hours=flash.period_hours)
 
 
 def _km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:

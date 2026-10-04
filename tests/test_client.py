@@ -142,8 +142,18 @@ def test_flash_floods_report_the_stronger_area() -> None:
     assert ok(run(server(flashes=[event]))).flash == "LIKELY"
     both = event | {"highlyLikelyAffectedPolygonId": "here"}
     assert ok(run(server(flashes=[both]))).flash == "HIGHLY_LIKELY"
-    expired = event | {"forecastPeriodHours": 1}
-    assert ok(run(server(flashes=[expired]))).flash is None
+
+
+def test_an_expired_flash_forecast_is_not_a_gap() -> None:
+    expired = {
+        "forecastIssueTime": ISSUED,
+        "forecastPeriodHours": 1,
+        "likelyAffectedPolygonId": "x",
+    }
+    found = ok(run(server([DRY], flashes=[expired])))
+    assert (found.verdict, found.flash, found.gaps) == ("NONE", None, ())
+    del expired["forecastPeriodHours"]
+    assert ok(run(server([DRY], flashes=[expired]))).gaps == ("1 flash forecasts unreadable",)
 
 
 def test_flash_outage_keeps_the_riverine_answer() -> None:
