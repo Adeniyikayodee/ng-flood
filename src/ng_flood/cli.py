@@ -38,7 +38,7 @@ def render(a: Assessment) -> str:
     river = (
         f"inside {r.level} area of gauge {r.gauge_id}, {r.severity}, trend {r.trend or 'unknown'}"
         if r
-        else f"not inside a forecast area ({a.gauges} gauges within range)"
+        else f"not inside a forecast area ({a.gauges} gauge{'s' * (a.gauges != 1)} within range)"
     )
     lines = [
         f"Verdict:  {a.verdict}",
