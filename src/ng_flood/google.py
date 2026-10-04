@@ -34,6 +34,11 @@ class Status:
     """(level, polygon id) pairs; level is HIGH, MEDIUM or LOW."""
     map_type: str | None
     alert_polygon_id: str | None
+    starts: datetime | None = None
+    ends: datetime | None = None
+    """The window the forecast predicts for."""
+    change_m: tuple[float, float] | None = None
+    """Lowest and highest expected change in level, in metres."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,9 +90,11 @@ def _status(raw: Any) -> Status | None:
     lat, lng = _number(at, "latitude"), _number(at, "longitude")
     if lat is None or lng is None:
         return None
-    map_set = raw.get("inundationMapSet")
-    map_set = map_set if isinstance(map_set, Mapping) else {}
+    map_set = _object(raw, "inundationMapSet")
     maps = map_set.get("inundationMaps")
+    window, change = _object(raw, "forecastTimeRange"), _object(raw, "forecastChange")
+    value = _object(change, "valueChange")
+    low, high = _number(value, "lowerBound"), _number(value, "upperBound")
     return Status(
         gauge_id=gauge,
         lat=lat,
@@ -104,6 +111,9 @@ def _status(raw: Any) -> Status | None:
         ),
         map_type=_text(map_set, "inundationMapType"),
         alert_polygon_id=_text(raw, "serializedNotificationPolygonId"),
+        starts=_time(window.get("start")),
+        ends=_time(window.get("end")),
+        change_m=None if low is None or high is None else (low, high),
     )
 
 
@@ -117,6 +127,11 @@ def _flash(raw: Any) -> Flash | None:
     return Flash(
         _time(raw.get("forecastIssueTime")), _number(raw, "forecastPeriodHours"), likely, highly
     )
+
+
+def _object(data: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    value = data.get(key)
+    return value if isinstance(value, Mapping) else {}
 
 
 def _text(data: Mapping[str, Any], key: str) -> str | None:

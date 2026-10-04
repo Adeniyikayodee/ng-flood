@@ -6,6 +6,7 @@ or unreadable makes it UNKNOWN rather than NONE.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
@@ -36,6 +37,7 @@ class Selection:
     statuses: tuple[Status, ...]
     flashes: tuple[Flash, ...]
     stale: int
+    now: datetime
 
     @property
     def polygon_ids(self) -> tuple[str, ...]:
@@ -53,12 +55,19 @@ class Riverine:
     trend: str | None
     map_type: str | None
     issued: datetime | None
+    polygon_id: str
+    """The forecast area that holds the point, for the audit trail."""
+    starts: datetime | None
+    ends: datetime | None
+    change_m: tuple[float, float] | None
 
 
 @dataclass(frozen=True, slots=True)
 class Assessment:
     lat: float
     lng: float
+    checked: datetime
+    """The time the forecasts were judged fresh against."""
     riverine: Riverine | None
     flash: str | None
     """HIGHLY_LIKELY or LIKELY, at 20 km resolution."""
@@ -73,12 +82,17 @@ class Assessment:
             return "FORECAST"
         return "UNKNOWN" if self.gaps or not self.gauges else "NONE"
 
+    @property
+    def lead_hours(self) -> float | None:
+        """Hours until the riverine forecast window opens; 0 once it has."""
+        if self.riverine is None or self.riverine.starts is None:
+            return None
+        return max(0.0, round((self.riverine.starts - self.checked).total_seconds() / 3600, 1))
+
     def as_dict(self) -> dict[str, Any]:
-        """A JSON-ready form, with the verdict and the attribution notice."""
-        data = asdict(self) | {"verdict": self.verdict, "notice": NOTICE}
-        if self.riverine and self.riverine.issued:
-            data["riverine"]["issued"] = self.riverine.issued.isoformat()
-        return data
+        """A JSON-ready record of the verdict and the evidence behind it."""
+        data: dict[str, Any] = json.loads(json.dumps(asdict(self), default=datetime.isoformat))
+        return data | {"verdict": self.verdict, "lead_hours": self.lead_hours, "notice": NOTICE}
 
 
 def select(
@@ -87,7 +101,7 @@ def select(
     near = [s for s in statuses if _km(lat, lng, s.lat, s.lng) <= RANGE_KM]
     fresh = tuple(s for s in near if s.issued and now - s.issued <= STALE)
     live = tuple(f for f in flashes if _live(f, now))
-    return Selection(fresh, live, len(near) - len(fresh) + len(flashes) - len(live))
+    return Selection(fresh, live, len(near) - len(fresh) + len(flashes) - len(live), now)
 
 
 def assess(
@@ -98,7 +112,18 @@ def assess(
         return area is not None and contains(area, lat, lng)
 
     hits = [
-        Riverine(s.gauge_id, level, s.severity, s.trend, s.map_type, s.issued)
+        Riverine(
+            s.gauge_id,
+            level,
+            s.severity,
+            s.trend,
+            s.map_type,
+            s.issued,
+            pid,
+            s.starts,
+            s.ends,
+            s.change_m,
+        )
         for s in selection.statuses
         for level, pid in _areas(s)
         if inside(pid)
@@ -120,9 +145,8 @@ def assess(
         *([f"{selection.stale} stale forecasts ignored"] if selection.stale else []),
         *([f"{missing} forecast areas unavailable"] if missing else []),
     ]
-    return Assessment(
-        lat, lng, min(hits, key=_rank, default=None), flash, len(selection.statuses), tuple(notes)
-    )
+    worst = min(hits, key=_rank, default=None)
+    return Assessment(lat, lng, selection.now, worst, flash, len(selection.statuses), tuple(notes))
 
 
 def _areas(status: Status) -> list[tuple[str, str]]:

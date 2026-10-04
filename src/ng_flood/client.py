@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from math import isfinite
@@ -36,6 +36,11 @@ class Failure:
         return self.reason
 
 
+def _in_nigeria(lat: float, lng: float) -> bool:
+    south, north, west, east = _BOUNDS
+    return isfinite(lat) and isfinite(lng) and south <= lat <= north and west <= lng <= east
+
+
 class Client:
     """Blocking client. Pass `http` to reuse your own `httpx.Client`; it stays yours to close.
 
@@ -51,9 +56,22 @@ class Client:
         self._nipost = Nipost(nipost_key, http=self._http) if nipost_key else None
 
     def assess(self, lat: float, lng: float, now: datetime | None = None) -> Assessment | Failure:
-        south, north, west, east = _BOUNDS
-        if not (isfinite(lat) and isfinite(lng) and south <= lat <= north and west <= lng <= east):
-            return Failure("coordinate is outside Nigeria")
+        results = self.assess_many([(lat, lng)], now)
+        return results if isinstance(results, Failure) else results[0]
+
+    def assess_many(
+        self, points: Sequence[tuple[float, float]], now: datetime | None = None
+    ) -> list[Assessment | Failure] | Failure:
+        """Assess every (lat, lng) from one download of the forecasts.
+
+        A point outside Nigeria fails alone. A riverine outage fails the batch.
+        """
+        results: list[Assessment | Failure] = [
+            Failure("not a coordinate in Nigeria") for _ in points
+        ]
+        inside = [i for i, point in enumerate(points) if _in_nigeria(*point)]
+        if not inside:
+            return results
         statuses = self._all(google.STATUS_PATH, {"regionCode": "NG"}, google.statuses)
         if isinstance(statuses, Failure):
             return statuses
@@ -64,11 +82,18 @@ class Client:
             flashes = ((), 0)
         elif flashes[1]:
             gaps.append(f"{flashes[1]} flash forecasts unreadable")
-        selection = select(lat, lng, statuses[0], flashes[0], now or datetime.now(UTC))
-        polygons = {pid: self._polygon(pid) for pid in selection.polygon_ids}
-        result = assess(lat, lng, selection, polygons, tuple(gaps))
-        postcode, area = self._label(lat, lng)
-        return replace(result, postcode=postcode, area=area)
+        now = now or datetime.now(UTC)
+        polygons: dict[str, tuple[Polygon, ...] | None] = {}
+        for i in inside:
+            lat, lng = points[i]
+            selection = select(lat, lng, statuses[0], flashes[0], now)
+            for pid in selection.polygon_ids:
+                if pid not in polygons:
+                    polygons[pid] = self._polygon(pid)
+            postcode, area = self._label(lat, lng)
+            result = assess(lat, lng, selection, polygons, tuple(gaps))
+            results[i] = replace(result, postcode=postcode, area=area)
+        return results
 
     def close(self) -> None:
         if self._owns_http:
