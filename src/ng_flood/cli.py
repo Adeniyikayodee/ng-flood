@@ -29,6 +29,11 @@ def main(argv: list[str] | None = None) -> int:
         help="check every row of a CSV with id, lat and lng columns; prints one JSON record a line",
     )
     parser.add_argument(
+        "--postcode",
+        action="store_true",
+        help="send each site to NIPOST for its postcode area; needs NG_POSTCODE_API_KEY",
+    )
+    parser.add_argument(
         "--evidence",
         metavar="DIR",
         type=Path,
@@ -47,11 +52,14 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as error:
         sites = str(error)
     key = os.environ.get("GOOGLE_FLOOD_API_KEY")
+    nipost = os.environ.get("NG_POSTCODE_API_KEY") if args.postcode else None
+    if not isinstance(sites, str) and not (key and (nipost or not args.postcode)):
+        sites = f"set {'NG_POSTCODE_API_KEY' if key else 'GOOGLE_FLOOD_API_KEY'}"
     if isinstance(sites, str) or not key:
-        print(sites if isinstance(sites, str) else "set GOOGLE_FLOOD_API_KEY", file=sys.stderr)
+        print(sites, file=sys.stderr)
         return 2
     now = datetime.now(UTC)
-    with Client(key, os.environ.get("NG_POSTCODE_API_KEY"), evidence=args.evidence) as client:
+    with Client(key, nipost, evidence=args.evidence) as client:
         results = client.assess_many([(lat, lng) for _, lat, lng in sites], now)
     rows = results if isinstance(results, list) else [results] * len(sites)
     if args.sites:

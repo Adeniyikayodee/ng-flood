@@ -40,17 +40,17 @@ def test_each_site_gets_one_record_with_its_id() -> None:
     assert second == {"id": "hh-2", "error": "not a coordinate in Nigeria", "checked": STAMP}
 
 
-def test_an_outage_is_logged_for_every_site(
+def test_a_batch_run_from_end_to_end(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def go(handler: Handler) -> tuple[int, list[dict[str, Any]]]:
+    def go(handler: Handler, *flags: str) -> tuple[int, list[dict[str, Any]]]:
         http = httpx.Client(transport=httpx.MockTransport(handler))
         monkeypatch.setattr("ng_flood.cli.Client", partial(Client, http=http))
-        code = main(["--sites", str(sites), "--evidence", str(tmp_path / "kml")])
+        code = main(["--sites", str(sites), "--evidence", str(tmp_path / "kml"), *flags])
         return code, [json.loads(line) for line in capsys.readouterr().out.splitlines()]
 
     monkeypatch.setenv("GOOGLE_FLOOD_API_KEY", "google")
-    monkeypatch.delenv("NG_POSTCODE_API_KEY", raising=False)
+    monkeypatch.setenv("NG_POSTCODE_API_KEY", "nipost")
     sites = tmp_path / "sites.csv"
     sites.write_text(CSV)
     code, rows = go(server(broken=("floodStatus",)))
@@ -65,6 +65,10 @@ def test_an_outage_is_logged_for_every_site(
     assert rows[0]["areas"] == {"here": sha256(KML["here"].encode()).hexdigest()}
     assert (tmp_path / "kml" / f"{rows[0]['areas']['here']}.kml").read_text() == KML["here"]
     assert (rows[0]["version"], rows[0]["cover_km"], rows[0]["stale_hours"]) == ("0.1.0", 50, 48)
+    assert rows[0]["area"] is None
+    assert go(server([STATUS]), "--postcode")[1][0]["area"] == "KG-05-A12-FK"
+    monkeypatch.delenv("NG_POSTCODE_API_KEY")
+    assert go(server([STATUS]), "--postcode") == (2, [])
     sites.write_text("id,lat,lng\nhh-2,north,7.0\n")
     assert go(server([STATUS]))[0] == 1
 
