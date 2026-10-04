@@ -95,6 +95,11 @@ def render(a: Assessment) -> str:
             else []
         ),
         f"Flash:    {a.flash or 'none forecast'} (20 km cells)",
+        *(
+            [f"Watch:    gauge {w.gauge_id} is {w.severity} {w.km:g} km away and has no map"]
+            if (w := a.watch)
+            else []
+        ),
         *(f"Gap:      {gap}" for gap in a.gaps),
         NOTICE,
     ]

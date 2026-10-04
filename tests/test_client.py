@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 from test_geometry import SQUARE, kml, polygon
 
-from ng_flood import Assessment, Client, Failure
+from ng_flood import Assessment, Client, Failure, Watch
 from ng_flood.cli import render
 
 NOW = datetime(2026, 10, 4, 12, tzinfo=UTC)
@@ -29,6 +29,7 @@ STATUS: dict[str, Any] = {
         ],
     },
 }
+DRY = STATUS | {"inundationMapSet": {}, "severity": "NO_FLOODING"}
 KML = {"here": kml(polygon(SQUARE)), "far": kml(polygon("0,0 1,0 1,1 0,1 0,0"))}
 REVERSE = {
     "found": True,
@@ -88,10 +89,9 @@ def test_alert_area_counts_when_no_map_holds_the_point() -> None:
 
 
 def test_none_needs_a_fresh_gauge_in_range_and_no_gaps() -> None:
-    dry = STATUS | {"inundationMapSet": {}, "severity": "NO_FLOODING"}
-    assert ok(run(server([dry]))).verdict == "NONE"
+    assert ok(run(server([DRY]))).verdict == "NONE"
     assert ok(run(server([]))).verdict == "UNKNOWN"
-    far = dry | {"gaugeLocation": {"latitude": 12.5, "longitude": 13.0}}
+    far = DRY | {"gaugeLocation": {"latitude": 12.5, "longitude": 13.0}}
     assert ok(run(server([far]))).verdict == "UNKNOWN"
 
 
@@ -107,9 +107,17 @@ def test_a_missing_polygon_is_a_gap_not_dry_land() -> None:
     assert found.gaps == ("1 forecast areas unavailable",)
 
 
+def test_an_elevated_gauge_without_a_map_is_a_watch() -> None:
+    found = ok(run(server([STATUS | {"inundationMapSet": {}}, DRY])))
+    assert found.verdict == "WATCH"
+    assert found.watch == Watch("g1", "SEVERE", 15.6)
+    assert "g1 is SEVERE 15.6 km away" in render(found)
+    assert found.as_dict()["watch"]["severity"] == "SEVERE"
+    assert ok(run(server([STATUS]), lat=9.5)).watch is None
+
+
 def test_an_unreadable_status_is_a_gap() -> None:
-    dry = STATUS | {"inundationMapSet": {}}
-    found = ok(run(server([dry, {"gaugeId": "no-location"}])))
+    found = ok(run(server([DRY, {"gaugeId": "no-location"}])))
     assert found.verdict == "UNKNOWN"
     assert found.gaps == ("1 riverine forecasts unreadable",)
 

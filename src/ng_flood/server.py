@@ -22,8 +22,9 @@ from .client import Client, Failure
 
 INSTRUCTIONS = (
     "Checks a coordinate in Nigeria against Google's flood forecasts. A verdict of NONE "
-    "means nothing is forecast now, not that the place is safe. UNKNOWN means the data "
-    "was missing or stale. Always pass on the notice."
+    "means nothing is forecast now, not that the place is safe. WATCH means a gauge nearby "
+    "is elevated but has no map. UNKNOWN means the data was missing or stale. Always pass "
+    "on the notice."
 )
 
 
@@ -51,7 +52,7 @@ def create_server(
             float, Field(ge=-180, le=180, description="Decimal degrees, e.g. 6.7333.")
         ],
     ) -> dict[str, Any]:
-        """Return the verdict (FORECAST, NONE or UNKNOWN), the riverine and flash flood
+        """Return the verdict (FORECAST, WATCH, NONE or UNKNOWN), the riverine and flash flood
         findings, any gaps in the data, and the NIPOST postcode area when a key is set."""
         with Client(google_key, nipost_key, http=http) as client:
             result = await to_thread.run_sync(client.assess, latitude, longitude)

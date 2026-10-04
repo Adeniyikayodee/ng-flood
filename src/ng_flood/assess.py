@@ -63,6 +63,15 @@ class Riverine:
 
 
 @dataclass(frozen=True, slots=True)
+class Watch:
+    """An elevated gauge that publishes no area to test the point against."""
+
+    gauge_id: str
+    severity: str
+    km: float
+
+
+@dataclass(frozen=True, slots=True)
 class Assessment:
     lat: float
     lng: float
@@ -75,11 +84,14 @@ class Assessment:
     gaps: tuple[str, ...]
     postcode: str | None = None
     area: str | None = None
+    watch: Watch | None = None
 
     @property
     def verdict(self) -> str:
         if self.riverine or self.flash:
             return "FORECAST"
+        if self.watch:
+            return "WATCH"
         return "UNKNOWN" if self.gaps or not self.gauges else "NONE"
 
     @property
@@ -110,6 +122,9 @@ def assess(
     def inside(pid: str | None) -> bool:
         area = polygons.get(pid) if pid else None
         return area is not None and contains(area, lat, lng)
+
+    def km(s: Status) -> float:
+        return _km(lat, lng, s.lat, s.lng)
 
     hits = [
         Riverine(
@@ -146,7 +161,12 @@ def assess(
         *([f"{missing} forecast areas unavailable"] if missing else []),
     ]
     worst = min(hits, key=_rank, default=None)
-    return Assessment(lat, lng, selection.now, worst, flash, len(selection.statuses), tuple(notes))
+    blind = [s for s in selection.statuses if s.severity in _SEVERITIES and not _areas(s)]
+    risen = min(blind, key=lambda s: (_SEVERITIES.index(s.severity), km(s)), default=None)
+    watch = Watch(risen.gauge_id, risen.severity, round(km(risen), 1)) if risen else None
+    return Assessment(
+        lat, lng, selection.now, worst, flash, len(selection.statuses), tuple(notes), watch=watch
+    )
 
 
 def _areas(status: Status) -> list[tuple[str, str]]:
