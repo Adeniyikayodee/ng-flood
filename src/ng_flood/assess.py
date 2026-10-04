@@ -7,9 +7,10 @@ or unreadable makes it UNKNOWN rather than NONE.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from math import asin, cos, radians, sin, sqrt
+from typing import Any
 
 from .geometry import Polygon, contains
 from .google import Flash, Status
@@ -20,6 +21,10 @@ STALE = timedelta(hours=48)
 ALERT_AREA = "ALERT_AREA"
 _LEVELS = ("HIGH", "MEDIUM", "LOW", ALERT_AREA)
 _SEVERITIES = ("EXTREME", "SEVERE", "ABOVE_NORMAL")
+NOTICE = (
+    "Forecast: Google Flood Forecasting, CC BY 4.0. Not an official warning; "
+    "follow NEMA and NIHSA. Postcode: NIPOST."
+)
 
 Polygons = Mapping[str, tuple[Polygon, ...] | None]
 
@@ -67,6 +72,13 @@ class Assessment:
         if self.riverine or self.flash:
             return "FORECAST"
         return "UNKNOWN" if self.gaps or not self.gauges else "NONE"
+
+    def as_dict(self) -> dict[str, Any]:
+        """A JSON-ready form, with the verdict and the attribution notice."""
+        data = asdict(self) | {"verdict": self.verdict, "notice": NOTICE}
+        if self.riverine and self.riverine.issued:
+            data["riverine"]["issued"] = self.riverine.issued.isoformat()
+        return data
 
 
 def select(

@@ -6,15 +6,9 @@ import argparse
 import json
 import os
 import sys
-from dataclasses import asdict
 
-from .assess import Assessment
+from .assess import NOTICE, Assessment
 from .client import Client, Failure
-
-NOTICE = (
-    "Forecast: Google Flood Forecasting, CC BY 4.0. Not an official warning; "
-    "follow NEMA and NIHSA. Postcode: NIPOST."
-)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -33,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
         print(result, file=sys.stderr)
         return 1
     if args.json:
-        print(json.dumps(asdict(result) | {"verdict": result.verdict}, default=str))
+        print(json.dumps(result.as_dict()))
     else:
         print(render(result))
     return 0

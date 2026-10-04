@@ -12,13 +12,29 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Kayode Adeniyi" }]
 keywords = ["nigeria", "flood", "postcode", "nipost", "flood-hub", "early-warning"]
-dependencies = ["httpx>=0.27", "ng-postcode[client]>=0.2.3"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Typing :: Typed",
+]
+dependencies = ["httpx>=0.27", "ng-postcode[client]>=0.2.3,<0.3"]
+
+[project.optional-dependencies]
+mcp = ["mcp>=2.3,<3"]
 
 [project.scripts]
 ng-flood = "ng_flood.cli:main"
+ng-flood-mcp = "ng_flood.server:main"
+
+[project.urls]
+Repository = "https://github.com/Adeniyikayodee/ng-flood"
+Issues = "https://github.com/Adeniyikayodee/ng-flood/issues"
 
 [dependency-groups]
-dev = ["mypy>=1.13", "pytest>=8", "ruff>=0.8"]
+dev = ["mcp>=2.3,<3", "mypy>=1.13", "pytest>=8", "ruff>=0.8"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ng_flood"]
