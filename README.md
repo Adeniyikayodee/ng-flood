@@ -3,10 +3,14 @@
 Google's flood forecast for a Nigerian coordinate, labelled with its NIPOST
 postcode area.
 
+## Use it
+
+Nothing to install: [uv](https://docs.astral.sh/uv/) fetches and runs it.
+
 ```sh
 export GOOGLE_FLOOD_API_KEY=...   # required
 export NG_POSTCODE_API_KEY=...    # optional, adds the postcode area
-uvx --from . ng-flood 7.8023 6.7333
+uvx ng-flood 7.8023 6.7333        # add --json for machine output
 ```
 
 ```
@@ -15,6 +19,22 @@ Area:     KG-05-A12-FK
 Riverine: inside LOW area of gauge g1, SEVERE, trend RISE
 Flash:    none forecast (20 km cells)
 ```
+
+From an AI assistant, as an MCP server with one tool, `check_flood_forecast`:
+
+```json
+{
+  "mcpServers": {
+    "ng-flood": {
+      "command": "uvx",
+      "args": ["--from", "ng-flood[mcp]", "ng-flood-mcp"],
+      "env": { "GOOGLE_FLOOD_API_KEY": "...", "NG_POSTCODE_API_KEY": "..." }
+    }
+  }
+}
+```
+
+From Python, after `pip install ng-flood`:
 
 ```python
 from ng_flood import Client, Failure
