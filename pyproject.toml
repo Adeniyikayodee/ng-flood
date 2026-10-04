@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ng-flood"
+version = "0.1.0"
+description = "Google's flood forecast for a Nigerian coordinate, labelled with its NIPOST postcode area."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Kayode Adeniyi" }]
+keywords = ["nigeria", "flood", "postcode", "nipost", "flood-hub", "early-warning"]
+dependencies = ["httpx>=0.27", "ng-postcode[client]>=0.2.3"]
+
+[project.scripts]
+ng-flood = "ng_flood.cli:main"
+
+[dependency-groups]
+dev = ["mypy>=1.13", "pytest>=8", "ruff>=0.8"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ng_flood"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "PT"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
