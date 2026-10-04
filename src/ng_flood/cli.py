@@ -7,7 +7,8 @@ import csv
 import json
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 from .assess import COVER_KM, NOTICE, Assessment
@@ -40,20 +41,20 @@ def main(argv: list[str] | None = None) -> int:
     if isinstance(sites, str) or not key:
         print(sites if isinstance(sites, str) else "set GOOGLE_FLOOD_API_KEY", file=sys.stderr)
         return 2
+    now = datetime.now(UTC)
     with Client(key, os.environ.get("NG_POSTCODE_API_KEY")) as client:
-        results = client.assess_many([(lat, lng) for _, lat, lng in sites])
-    if isinstance(results, Failure):
-        print(results, file=sys.stderr)
-        return 1
+        results = client.assess_many([(lat, lng) for _, lat, lng in sites], now)
+    rows = results if isinstance(results, list) else [results] * len(sites)
     if args.sites:
-        for record in records(sites, results):
+        for record in records(sites, rows, now):
             print(json.dumps(record))
-    elif isinstance(results[0], Failure):
-        print(results[0], file=sys.stderr)
-        return 1
+        if isinstance(results, Failure):
+            print(results, file=sys.stderr)
+    elif isinstance(rows[0], Failure):
+        print(rows[0], file=sys.stderr)
     else:
-        print(json.dumps(results[0].as_dict()) if args.json else render(results[0]))
-    return 0
+        print(json.dumps(rows[0].as_dict()) if args.json else render(rows[0]))
+    return 0 if any(isinstance(row, Assessment) for row in rows) else 1
 
 
 def read_sites(lines: Iterator[str]) -> list[Site] | str:
@@ -65,10 +66,13 @@ def read_sites(lines: Iterator[str]) -> list[Site] | str:
     return [(row["id"], _number(row["lat"]), _number(row["lng"])) for row in reader]
 
 
-def records(sites: list[Site], results: list[Assessment | Failure]) -> Iterator[dict[str, Any]]:
+def records(
+    sites: list[Site], results: Sequence[Assessment | Failure], now: datetime
+) -> Iterator[dict[str, Any]]:
+    """One record a site. A failure is logged too, so a run that found nothing leaves a trace."""
     for (site, _, _), result in zip(sites, results, strict=True):
-        found = {"error": str(result)} if isinstance(result, Failure) else result.as_dict()
-        yield {"id": site} | found
+        error = {"error": str(result), "checked": now.isoformat()}
+        yield {"id": site} | (error if isinstance(result, Failure) else result.as_dict())
 
 
 def _number(text: str | None) -> float:
