@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from importlib.resources import files
 from math import isfinite
 from typing import Any, TypeVar
 from urllib.parse import quote
@@ -15,15 +16,15 @@ from ng_postcode.client import Client as Nipost
 
 from . import google
 from .assess import Assessment, assess, select
-from .geometry import Polygon
+from .geometry import Polygon, contains, parse_kml
 
 T = TypeVar("T")
 
 TIMEOUT = 10.0
 MAX_PAGES = 10
 REVERSE_M = 250.0
-_BOUNDS = (4.0, 14.0, 2.5, 15.0)
-"""A box around Nigeria: south, north, west, east."""
+_NIGERIA = parse_kml(files("ng_flood").joinpath("nigeria.kml").read_text()) or ()
+"""The border, about 10 km generous so border and coastal sites pass."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,8 +38,7 @@ class Failure:
 
 
 def _in_nigeria(lat: float, lng: float) -> bool:
-    south, north, west, east = _BOUNDS
-    return isfinite(lat) and isfinite(lng) and south <= lat <= north and west <= lng <= east
+    return isfinite(lat) and isfinite(lng) and contains(_NIGERIA, lat, lng)
 
 
 class Client:

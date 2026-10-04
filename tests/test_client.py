@@ -162,6 +162,13 @@ def test_outside_nigeria_makes_no_call() -> None:
     assert run(never, lat=float("nan")) == Failure("not a coordinate in Nigeria")
 
 
+def test_the_border_decides_what_is_nigeria() -> None:
+    with Client("google", http=httpx.Client(transport=httpx.MockTransport(server()))) as client:
+        assert client.assess(6.0, 12.0, NOW) == Failure("not a coordinate in Nigeria")  # Cameroon
+        for lat, lng in ((6.45, 3.39), (4.32, 6.2), (13.7, 13.3), (6.38, 2.72)):  # the edges
+            assert isinstance(client.assess(lat, lng, NOW), Assessment)
+
+
 def test_follows_pages_and_names_no_key_on_network_failure() -> None:
     calls: list[bytes] = []
 
