@@ -199,14 +199,14 @@ def assess(
         sum(d <= COVER_KM for d in known),
         (
             *gaps,
-            *_some(stale, "stale forecasts ignored"),
-            *_some(len(missing) - far, "forecast areas unavailable"),
+            *some(stale, "stale forecast", "ignored"),
+            *some(len(missing) - far, "forecast area", "unavailable"),
         ),
         watch=Watch(risen.gauge_id, risen.severity, round(km(risen), 1)) if risen else None,
         nearest_gauge_km=round(known[0], 1) if known else None,
         notes=(
-            *_some(far_stale, f"stale forecasts {beyond}"),
-            *_some(far, f"forecast areas unavailable {beyond}"),
+            *some(far_stale, "stale forecast", beyond),
+            *some(far, "forecast area", f"unavailable {beyond}"),
         ),
         areas={pid: (digests or {}).get(pid) for pid in selection.polygon_ids if inside(pid)},
     )
@@ -216,8 +216,8 @@ def _fresh(status: Status, now: datetime) -> bool:
     return status.issued is not None and now - status.issued <= STALE
 
 
-def _some(n: int, what: str) -> list[str]:
-    return [f"{n} {what}"] if n else []
+def some(n: int, noun: str, state: str) -> list[str]:
+    return [f"{n} {noun}{'s' * (n != 1)} {state}"] if n else []
 
 
 def _areas(status: Status) -> list[tuple[str, str]]:

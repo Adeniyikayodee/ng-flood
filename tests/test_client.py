@@ -118,7 +118,7 @@ def test_a_gauge_beyond_cover_does_not_make_none() -> None:
 def test_a_stale_forecast_is_a_gap() -> None:
     found = ok(run(server([STATUS | {"issuedTime": "2026-09-30T06:00:00Z"}])))
     assert (found.verdict, found.riverine) == ("UNKNOWN", None)
-    assert found.gaps == ("1 stale forecasts ignored",)
+    assert found.gaps == ("1 stale forecast ignored",)
 
 
 def test_a_gap_too_far_to_matter_is_only_a_note() -> None:
@@ -127,7 +127,7 @@ def test_a_gap_too_far_to_matter_is_only_a_note() -> None:
     found = ok(run(server([DRY] * 30 + [old, STATUS | there], broken=("serializedPolygons/",))))
     assert (found.verdict, found.gaps) == ("NONE", ())
     assert found.notes == (
-        "1 stale forecasts beyond 50 km",
+        "1 stale forecast beyond 50 km",
         "2 forecast areas unavailable beyond 50 km",
     )
     assert "Note:     1 stale" in render(found)
@@ -136,7 +136,7 @@ def test_a_gap_too_far_to_matter_is_only_a_note() -> None:
 def test_a_missing_polygon_is_a_gap_not_dry_land() -> None:
     found = ok(run(server([STATUS], broken=("serializedPolygons/here",))))
     assert found.verdict == "UNKNOWN"
-    assert found.gaps == ("1 forecast areas unavailable",)
+    assert found.gaps == ("1 forecast area unavailable",)
 
 
 def test_an_elevated_gauge_without_a_map_is_a_watch() -> None:
@@ -151,7 +151,7 @@ def test_an_elevated_gauge_without_a_map_is_a_watch() -> None:
 def test_an_unreadable_status_is_a_gap() -> None:
     found = ok(run(server([DRY, {"gaugeId": "no-location"}])))
     assert found.verdict == "UNKNOWN"
-    assert found.gaps == ("1 riverine forecasts unreadable",)
+    assert found.gaps == ("1 riverine forecast unreadable",)
 
 
 def test_flash_floods_report_the_stronger_area() -> None:
@@ -175,7 +175,7 @@ def test_an_expired_flash_forecast_is_not_a_gap() -> None:
     found = ok(run(server([DRY], flashes=[expired])))
     assert (found.verdict, found.flash, found.gaps) == ("NONE", None, ())
     del expired["forecastPeriodHours"]
-    assert ok(run(server([DRY], flashes=[expired]))).gaps == ("1 flash forecasts unreadable",)
+    assert ok(run(server([DRY], flashes=[expired]))).gaps == ("1 flash forecast unreadable",)
 
 
 def test_flash_outage_keeps_the_riverine_answer() -> None:

@@ -18,7 +18,7 @@ from ng_postcode import api as nipost
 from ng_postcode.client import Client as Nipost
 
 from . import google
-from .assess import Assessment, assess, select
+from .assess import Assessment, assess, select, some
 from .geometry import Polygon, contains, parse_kml
 
 T = TypeVar("T")
@@ -97,12 +97,11 @@ class Client:
         if isinstance(statuses, Failure):
             return statuses
         flashes = self._all(google.FLASH_PATH, {"countryCodes": ["NG"]}, google.flashes)
-        gaps = [f"{statuses[1]} riverine forecasts unreadable"] if statuses[1] else []
+        gaps = some(statuses[1], "riverine forecast", "unreadable")
         if isinstance(flashes, Failure):
             gaps.append(f"flash floods unavailable: {flashes}")
             flashes = ((), 0)
-        elif flashes[1]:
-            gaps.append(f"{flashes[1]} flash forecasts unreadable")
+        gaps += some(flashes[1], "flash forecast", "unreadable")
         now = now or datetime.now(UTC)
         polygons: dict[str, tuple[Polygon, ...] | None] = {}
         kml: dict[str, str] = {}
