@@ -150,8 +150,8 @@ def test_outside_nigeria_makes_no_call() -> None:
     def never(request: httpx.Request) -> httpx.Response:
         raise AssertionError(request.url)
 
-    assert run(never, lat=51.5) == Failure("coordinate is outside Nigeria")
-    assert run(never, lat=float("nan")) == Failure("coordinate is outside Nigeria")
+    assert run(never, lat=51.5) == Failure("not a coordinate in Nigeria")
+    assert run(never, lat=float("nan")) == Failure("not a coordinate in Nigeria")
 
 
 def test_follows_pages_and_names_no_key_on_network_failure() -> None:
@@ -171,3 +171,46 @@ def test_follows_pages_and_names_no_key_on_network_failure() -> None:
         raise httpx.ConnectError("refused google", request=request)
 
     assert run(down) == Failure("ConnectError")
+
+
+def test_reports_lead_time_and_the_evidence_for_an_audit() -> None:
+    window = {"start": "2026-10-06T12:00:00Z", "end": "2026-10-07T12:00:00Z"}
+    change = {"valueChange": {"lowerBound": 0.4, "upperBound": 0.9}}
+    found = ok(run(server([STATUS | {"forecastTimeRange": window, "forecastChange": change}])))
+    assert found.riverine is not None
+    assert (found.lead_hours, found.riverine.change_m) == (48.0, (0.4, 0.9))
+    assert (found.riverine.polygon_id, found.checked) == ("here", NOW)
+    record = found.as_dict()
+    assert record["checked"] == "2026-10-04T12:00:00+00:00"
+    assert record["riverine"]["starts"] == "2026-10-06T12:00:00+00:00"
+    assert (record["lead_hours"], record["riverine"]["gauge_id"]) == (48.0, "g1")
+    assert "Lead:     48 h" in render(found)
+
+
+def test_lead_time_is_zero_once_the_window_opens_and_absent_without_one() -> None:
+    opened = {"forecastTimeRange": {"start": "2026-10-04T00:00:00Z"}}
+    assert ok(run(server([STATUS | opened]))).lead_hours == 0.0
+    assert ok(run(server([STATUS]))).lead_hours is None
+    assert "Lead:" not in render(ok(run(server([STATUS]))))
+
+
+def test_a_batch_downloads_the_forecasts_once() -> None:
+    paths: list[str] = []
+
+    def counted(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return server([STATUS])(request)
+
+    with Client("google", http=httpx.Client(transport=httpx.MockTransport(counted))) as client:
+        results = client.assess_many([(LAT, LNG), (51.5, 0.0), (8.5, 7.5), (9.2, 7.0)], NOW)
+    assert not isinstance(results, Failure)
+    verdicts = [r.verdict if isinstance(r, Assessment) else str(r) for r in results]
+    assert verdicts == ["FORECAST", "not a coordinate in Nigeria", "FORECAST", "NONE"]
+    assert sorted(paths) == sorted(
+        [
+            "/v1/floodStatus:searchLatestFloodStatusByArea",
+            "/v1/flashFloods:search",
+            "/v1/serializedPolygons/far",
+            "/v1/serializedPolygons/here",
+        ]
+    )
