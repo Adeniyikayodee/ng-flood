@@ -72,6 +72,23 @@ until the riverine forecast window opens.
 jq -r '[.lga, .verdict] | @tsv' triggers.jsonl | sort | uniq -c
 ```
 
+For a plan by postcode area, add `--by postcode`. Each line is then one NIPOST
+area, worst first, and `--records` keeps the site records behind it:
+
+```sh
+uvx ng-flood --sites households.csv --by postcode --records triggers.jsonl
+```
+
+```json
+{"area": "KG-05-A12-FK", "sites": 12, "verdict": "FORECAST", "FORECAST": 3, "WATCH": 0,
+ "UNKNOWN": 1, "NONE": 8, "errors": 0, "lead_hours": 36.0, "checked": "...", "...": "..."}
+```
+
+An area takes the worst verdict among its sites, and `UNKNOWN` outranks `NONE`,
+so one blind site stops an area reading as clear. `lead_hours` is the shortest
+among them. Sites with no postcode share a row whose `area` is `null`, and
+failed sites are counted in `errors`, so the rows always add up to the CSV.
+
 A row that cannot be read gets an `error` and does not stop the rest. If Google
 cannot be reached, every site still gets an `error` record with the time, so a
 failed run leaves a trace. The exit code is 1 when no site could be assessed.
@@ -126,10 +143,14 @@ thresholds are provisional until they are checked against live data.
 - Nothing from NIPOST or Google is cached or stored, unless you pass
   `--evidence`.
 - No site location leaves your machine by default: Google's forecasts are
-  downloaded whole and compared locally. Only `--postcode`, or a NIPOST key
-  given to the library or the MCP server, sends each coordinate to NIPOST.
+  downloaded whole and compared locally. Only `--postcode`, `--by postcode`, or
+  a NIPOST key given to the library or the MCP server, sends each coordinate to
+  NIPOST.
   Keep names out of the `id` column.
 - A 429, a 5xx or a network error is retried twice before it counts as a gap.
+  After three failures in a row, forecast areas or postcodes are not asked for
+  again in that run. A missing postcode is explained under `notes`.
+- If `--evidence` cannot be saved, the run fails and every site gets an `error`.
 - The decoders follow Google's published schema. They have not yet been run
   against live responses: the API is behind a
   [waitlist](https://developers.google.com/flood-forecasting).
