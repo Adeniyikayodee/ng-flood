@@ -21,6 +21,7 @@ def polygon(outer: str, hole: str | None = None) -> str:
 def test_a_point_is_inside_only_within_the_ring() -> None:
     area = parse_kml(kml(polygon(SQUARE)))
     assert area is not None
+    assert area[0].box == (6.0, 7.0, 8.0, 9.0)
     assert contains(area, lat=8.0, lng=7.0)
     assert not contains(area, lat=8.0, lng=9.0)
     assert not contains(area, lat=10.0, lng=7.0)

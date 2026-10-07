@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from xml.etree import ElementTree
 
 Ring = tuple[tuple[float, float], ...]
@@ -13,6 +13,12 @@ Ring = tuple[tuple[float, float], ...]
 class Polygon:
     outer: Ring
     holes: tuple[Ring, ...] = ()
+    box: tuple[float, float, float, float] = field(init=False)
+    """West, south, east, north: a cheap test before the ring is walked."""
+
+    def __post_init__(self) -> None:
+        xs, ys = zip(*self.outer, strict=True)
+        object.__setattr__(self, "box", (min(xs), min(ys), max(xs), max(ys)))
 
 
 def parse_kml(kml: str) -> tuple[Polygon, ...] | None:
@@ -36,7 +42,10 @@ def parse_kml(kml: str) -> tuple[Polygon, ...] | None:
 
 def contains(polygons: tuple[Polygon, ...], lat: float, lng: float) -> bool:
     return any(
-        _inside(p.outer, lat, lng) and not any(_inside(h, lat, lng) for h in p.holes)
+        p.box[0] <= lng <= p.box[2]
+        and p.box[1] <= lat <= p.box[3]
+        and _inside(p.outer, lat, lng)
+        and not any(_inside(h, lat, lng) for h in p.holes)
         for p in polygons
     )
 
