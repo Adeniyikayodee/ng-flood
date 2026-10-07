@@ -62,6 +62,8 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
                 sites = read_sites(file, args.keep)
     except OSError as error:
         sites = str(error)
+    except (UnicodeError, csv.Error) as error:
+        sites = f"{args.sites} is not a UTF-8 CSV: {error}"
     key = os.environ.get("GOOGLE_FLOOD_API_KEY")
     nipost = os.environ.get("NG_POSTCODE_API_KEY") if args.postcode else None
     if not isinstance(sites, str) and not (key and (nipost or not args.postcode)):

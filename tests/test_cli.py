@@ -87,6 +87,9 @@ def test_usage_errors_exit_2_before_any_call(
     bad.write_text("name\na\n")
     assert main(["--sites", str(bad)]) == 2
     assert "no column named id or lat or lng" in capsys.readouterr().err
+    bad.write_bytes(b"id,lat,lng\n\xff,8,7\n")
+    assert main(["--sites", str(bad)]) == 2
+    assert "is not a UTF-8 CSV" in capsys.readouterr().err
     for argv in (
         [],
         ["8.0"],
