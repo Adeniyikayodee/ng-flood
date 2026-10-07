@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 from test_geometry import SQUARE, kml, polygon
 
 from ng_flood import Assessment, Client, Failure, Watch
@@ -330,3 +332,19 @@ def test_an_endpoint_that_keeps_failing_is_left_alone() -> None:
     last = ok(results[-1])
     assert (last.verdict, last.gaps) == ("UNKNOWN", ("5 forecast areas unavailable",))
     assert last.notes == ("postcode lookup stopped after 3 failures",)
+
+
+def test_evidence_is_saved_once_or_the_run_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def go(evidence: Path) -> list[Assessment | Failure] | Failure:
+        http = httpx.Client(transport=httpx.MockTransport(server([STATUS])))
+        with Client("google", http=http, evidence=evidence) as client:
+            return client.assess_many([(LAT, LNG)] * 3, NOW)
+
+    (tmp_path / "file").touch()
+    assert str(go(tmp_path / "file")).startswith("evidence not saved: ")
+    writes: list[str] = []
+    monkeypatch.setattr(Path, "write_text", lambda self, *_, **__: writes.append(self.name))
+    assert isinstance(go(tmp_path), list)
+    assert len(writes) == 1
