@@ -9,21 +9,7 @@ The recording shows the real program on sample data.
 
 ## How it works
 
-```mermaid
-flowchart LR
-    A[Coordinate] -.->|--postcode| B[NIPOST reverse geocode]
-    A --> C[Google riverine forecasts<br/>gauges within 150 km]
-    A --> D[Google flash flood forecasts]
-    C --> E[Is the point inside<br/>a forecast area?]
-    D --> E
-    B --> F[Postcode area label]
-    E --> G{Verdict}
-    F --> G
-    G --> H[FORECAST]
-    G --> K[WATCH<br/>elevated gauge, no map]
-    G --> I[NONE<br/>fresh gauge within 50 km]
-    G --> J[UNKNOWN<br/>anything stale or missing nearby]
-```
+![A coordinate flows through NIPOST and Google's riverine and flash flood forecasts to one of four verdicts, FORECAST, WATCH, NONE or UNKNOWN, then rolls up into one row for each postcode area](docs/flow.gif)
 
 ## Use it
 
