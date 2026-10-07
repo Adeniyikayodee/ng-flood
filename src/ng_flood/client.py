@@ -89,7 +89,8 @@ class Client:
     ) -> list[Assessment | Failure] | Failure:
         """Assess every (lat, lng) from one download of the forecasts.
 
-        A point outside Nigeria fails alone. A riverine outage fails the batch.
+        A point outside Nigeria fails alone. A riverine outage fails the batch, and
+        so does evidence that cannot be saved.
         """
         results: list[Assessment | Failure] = [
             Failure("not a coordinate in Nigeria") for _ in points
@@ -111,6 +112,7 @@ class Client:
         polygons: dict[str, tuple[Polygon, ...] | None] = {}
         kml: dict[str, str] = {}
         digests: dict[str, str] = {}
+        saved: set[str] = set()
         for i in inside:
             lat, lng = points[i]
             selection = select(lat, lng, statuses[0], flashes[0], now)
@@ -123,8 +125,13 @@ class Client:
             result = assess(lat, lng, selection, polygons, tuple(gaps), digests)
             results[i] = replace(result, postcode=postcode, area=area, notes=result.notes + why)
             if self._evidence:
-                for pid in result.areas:
-                    (self._evidence / f"{digests[pid]}.kml").write_text(kml[pid], encoding="utf-8")
+                try:
+                    for pid in result.areas.keys() - saved:
+                        path = self._evidence / f"{digests[pid]}.kml"
+                        path.write_text(kml[pid], encoding="utf-8")
+                except OSError as error:
+                    return Failure(f"evidence not saved: {error}")
+                saved |= result.areas.keys()
         return results
 
     def close(self) -> None:
