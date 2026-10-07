@@ -117,24 +117,20 @@ class Assessment:
     def as_dict(self) -> dict[str, Any]:
         """A JSON-ready record of the verdict and the evidence behind it."""
         data: dict[str, Any] = json.loads(json.dumps(asdict(self), default=datetime.isoformat))
-        return data | {
-            "verdict": self.verdict,
-            "lead_hours": self.lead_hours,
-            "version": version("ng-flood"),
-            "cover_km": COVER_KM,
-            "stale_hours": STALE.total_seconds() / 3600,
-            "notice": NOTICE,
-        }
+        return data | {"verdict": self.verdict, "lead_hours": self.lead_hours} | judged()
 
 
-FIELDS = frozenset(Assessment.__dataclass_fields__) | {
-    "verdict",
-    "lead_hours",
-    "version",
-    "cover_km",
-    "stale_hours",
-    "notice",
-}
+def judged() -> dict[str, Any]:
+    """The version and thresholds behind a verdict, and the notice to pass on."""
+    return {
+        "version": version("ng-flood"),
+        "cover_km": COVER_KM,
+        "stale_hours": STALE.total_seconds() / 3600,
+        "notice": NOTICE,
+    }
+
+
+FIELDS = frozenset(Assessment.__dataclass_fields__) | {"verdict", "lead_hours", *judged()}
 """Every key of a record."""
 
 

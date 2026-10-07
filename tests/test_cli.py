@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from hashlib import sha256
 from pathlib import Path
@@ -10,15 +11,17 @@ from typing import Any
 
 import httpx
 import pytest
-from test_client import KML, STATUS, Handler, server
+from test_client import KML, REVERSE, STATUS, Handler, server
 
-from ng_flood import Assessment, Client, Failure
+from ng_flood import Assessment, Client, Failure, Riverine
 from ng_flood.assess import FIELDS
-from ng_flood.cli import Site, main, read_sites, records
+from ng_flood.cli import Site, main, read_sites, records, roll_up
 
 NOW = datetime(2026, 10, 4, tzinfo=UTC)
 STAMP = "2026-10-04T00:00:00+00:00"
 CSV = "id,lat,lng,village\nhh-1,8.0,7.0,Lokoja\nhh-2,north,7.0,Lokoja\n"
+FAILED = Failure("not a coordinate in Nigeria")
+HIT = Riverine("g1", "LOW", "SEVERE", None, None, None, "here", None, None, None)
 
 
 def test_reads_sites_and_keeps_a_bad_row_in_place() -> None:
@@ -44,6 +47,22 @@ def test_each_site_gets_one_record_with_its_id() -> None:
     assert first["lga"] == "Lokoja"
     assert set(dry.as_dict()) == FIELDS
     assert second == {"id": "hh-2", "error": "not a coordinate in Nigeria", "checked": STAMP}
+
+
+def test_sites_roll_up_by_postcode_area_and_none_is_lost() -> None:
+    dry = Assessment(8.0, 7.0, NOW, None, None, 1, (), area="KG-05")
+    blind = replace(dry, gauges=0)
+    soon = replace(HIT, starts=NOW + timedelta(hours=6))
+    wet = replace(dry, riverine=soon, area="KG-07")
+    rows = roll_up([dry, blind, wet, replace(wet, flash="LIKELY", riverine=None), FAILED], NOW)
+    assert [(r["area"], r["sites"], r["verdict"], r["errors"]) for r in rows] == [
+        ("KG-07", 2, "FORECAST", 0),
+        ("KG-05", 2, "UNKNOWN", 0),
+        (None, 1, None, 1),
+    ]
+    assert (rows[0]["FORECAST"], rows[0]["lead_hours"], rows[0]["checked"]) == (2, 6.0, STAMP)
+    assert (rows[1]["NONE"], rows[1]["UNKNOWN"], rows[1]["lead_hours"]) == (1, 1, None)
+    assert (rows[2]["version"], rows[2]["cover_km"]) == ("0.1.0", 50)
 
 
 def test_a_batch_run_from_end_to_end(
@@ -73,8 +92,14 @@ def test_a_batch_run_from_end_to_end(
     assert (rows[0]["version"], rows[0]["cover_km"], rows[0]["stale_hours"]) == ("0.1.0", 50, 48)
     assert rows[0]["area"] is None
     assert go(server([STATUS]), "--postcode")[1][0]["area"] == "KG-05-A12-FK"
+    code, rows = go(server([STATUS]), "--by", "postcode")
+    assert (code, [(row["area"], row["sites"], row["errors"]) for row in rows]) == (
+        0,
+        [(REVERSE["area"], 1, 0), (None, 1, 1)],
+    )
     monkeypatch.delenv("NG_POSTCODE_API_KEY")
     assert go(server([STATUS]), "--postcode") == (2, [])
+    assert go(server([STATUS]), "--by", "postcode") == (2, [])
     sites.write_text("id,lat,lng\nhh-2,north,7.0\n")
     assert go(server([STATUS]))[0] == 1
 
@@ -97,6 +122,7 @@ def test_usage_errors_exit_2_before_any_call(
         ["8.0"],
         ["8.0", "7.0", "--sites", str(bad)],
         ["8.0", "7.0", "--keep", "lga"],
+        ["8.0", "7.0", "--by", "postcode"],
         ["--sites", str(bad), "--json"],
         ["--sites", str(bad), "--keep", "lga, area"],
     ):

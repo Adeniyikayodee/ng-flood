@@ -7,15 +7,18 @@ import csv
 import json
 import os
 import sys
+from collections import Counter
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .assess import COVER_KM, FIELDS, NOTICE, Assessment
+from .assess import COVER_KM, FIELDS, NOTICE, Assessment, judged
 from .client import Client, Failure
 
 Site = tuple[str, float, float, dict[str, str]]
+VERDICTS = ("FORECAST", "WATCH", "UNKNOWN", "NONE")
+"""Worst first. UNKNOWN outranks NONE, so one blind site stops an area reading as clear."""
 
 
 def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
@@ -41,6 +44,12 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         help="send each site to NIPOST for its postcode area; needs NG_POSTCODE_API_KEY",
     )
     parser.add_argument(
+        "--by",
+        choices=["postcode"],
+        help="with --sites, print one record for each postcode area, not each site; "
+        "implies --postcode",
+    )
+    parser.add_argument(
         "--evidence",
         metavar="DIR",
         type=Path,
@@ -49,8 +58,8 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
     args = parser.parse_args(argv)
     if (args.sites is None) == (args.lat is None or args.lng is None):
         parser.error("give LAT LNG or --sites CSV")
-    if args.keep and not args.sites:
-        parser.error("--keep needs --sites")
+    if (args.keep or args.by) and not args.sites:
+        parser.error("--keep and --by need --sites")
     if clash := sorted(FIELDS.union(("id", "error")).intersection(args.keep)):
         parser.error(f"--keep cannot take {', '.join(clash)}: every record has its own")
     if args.json and args.sites:
@@ -67,8 +76,9 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
     except (UnicodeError, csv.Error) as error:
         sites = f"{args.sites} is not a UTF-8 CSV: {error}"
     key = os.environ.get("GOOGLE_FLOOD_API_KEY")
-    nipost = os.environ.get("NG_POSTCODE_API_KEY") if args.postcode else None
-    if not isinstance(sites, str) and not (key and (nipost or not args.postcode)):
+    label = args.postcode or args.by
+    nipost = os.environ.get("NG_POSTCODE_API_KEY") if label else None
+    if not isinstance(sites, str) and not (key and (nipost or not label)):
         sites = f"set {'NG_POSTCODE_API_KEY' if key else 'GOOGLE_FLOOD_API_KEY'}"
     if isinstance(sites, str) or not key:
         print(sites, file=sys.stderr)
@@ -78,7 +88,7 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         results = client.assess_many([(lat, lng) for _, lat, lng, _ in sites], now)
     rows = results if isinstance(results, list) else [results] * len(sites)
     if args.sites:
-        for record in records(sites, rows, now):
+        for record in roll_up(rows, now) if args.by else records(sites, rows, now):
             print(json.dumps(record))
         if isinstance(results, Failure):
             print(results, file=sys.stderr)
@@ -108,6 +118,32 @@ def records(
     for (site, _, _, kept), result in zip(sites, results, strict=True):
         error = {"error": str(result), "checked": now.isoformat()}
         yield {"id": site} | kept | (error if isinstance(result, Failure) else result.as_dict())
+
+
+def roll_up(results: Sequence[Assessment | Failure], now: datetime) -> list[dict[str, Any]]:
+    """One record a postcode area, worst first. Sites with no area share a null row and
+    failures are counted, so the rows add up to the input."""
+    groups: dict[str | None, list[Assessment | Failure]] = {}
+    for result in results:
+        groups.setdefault(getattr(result, "area", None), []).append(result)
+    rows = []
+    for area, group in groups.items():
+        found = [result for result in group if isinstance(result, Assessment)]
+        counts = Counter(result.verdict for result in found)
+        leads = [result.lead_hours for result in found if result.lead_hours is not None]
+        rows.append(
+            {
+                "area": area,
+                "sites": len(group),
+                "verdict": next((verdict for verdict in VERDICTS if counts[verdict]), None),
+                **{verdict: counts[verdict] for verdict in VERDICTS},
+                "errors": len(group) - len(found),
+                "lead_hours": min(leads, default=None),
+                "checked": now.isoformat(),
+            }
+            | judged()
+        )
+    return sorted(rows, key=lambda row: VERDICTS.index(row["verdict"] or "NONE"))
 
 
 def _number(text: str | None) -> float:
