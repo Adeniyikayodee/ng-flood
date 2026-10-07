@@ -10,6 +10,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
+from functools import cache
 from importlib.metadata import version
 from math import asin, cos, radians, sin, sqrt
 from typing import Any
@@ -155,6 +156,7 @@ def assess(
     gaps: tuple[str, ...] = (),
     digests: Mapping[str, str] | None = None,
 ) -> Assessment:
+    @cache
     def inside(pid: str | None) -> bool:
         area = polygons.get(pid) if pid else None
         return area is not None and contains(area, lat, lng)
