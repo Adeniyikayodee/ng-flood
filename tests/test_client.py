@@ -9,7 +9,7 @@ import httpx
 import pytest
 from test_geometry import SQUARE, kml, polygon
 
-from ng_flood import Assessment, Client, Failure, Watch
+from ng_flood import Assessment, Client, Failure, Watch, google
 from ng_flood.cli import render
 
 NOW = datetime(2026, 10, 4, 12, tzinfo=UTC)
@@ -154,6 +154,13 @@ def test_an_unreadable_status_is_a_gap() -> None:
     found = ok(run(server([DRY, {"gaugeId": "no-location"}])))
     assert found.verdict == "UNKNOWN"
     assert found.gaps == ("1 riverine forecast unreadable",)
+
+
+def test_a_number_that_is_not_finite_is_unreadable() -> None:
+    at = {"latitude": float("nan"), "longitude": 7.1}
+    page = google.statuses({"floodStatuses": [STATUS | {"gaugeLocation": at}]})
+    assert page is not None
+    assert (page.items, page.skipped) == ((), 1)
 
 
 def test_flash_floods_report_the_stronger_area() -> None:
