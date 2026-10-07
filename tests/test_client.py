@@ -193,7 +193,19 @@ def test_riverine_outage_is_a_failure() -> None:
 def test_postcode_outage_keeps_the_forecast() -> None:
     found = ok(run(server([STATUS], broken=("/v1/search/reverse",))))
     assert (found.verdict, found.area, found.postcode) == ("FORECAST", None, None)
+    assert found.notes == ("postcode lookup failed: malformed_response",)
     assert ok(run(server([STATUS]), nipost=None)).area is None
+
+
+def test_a_site_far_from_any_building_says_so() -> None:
+    def empty(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.postcode.gov.ng":
+            return httpx.Response(200, json={"data": {"found": False}})
+        return server([STATUS])(request)
+
+    found = ok(run(empty))
+    assert (found.verdict, found.area) == ("FORECAST", None)
+    assert found.notes == ("no postcode within 250 m",)
 
 
 def test_outside_nigeria_makes_no_call() -> None:
