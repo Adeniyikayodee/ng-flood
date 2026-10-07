@@ -50,7 +50,7 @@ def test_a_batch_run_from_end_to_end(
     def go(handler: Handler, *flags: str) -> tuple[int, list[dict[str, Any]]]:
         http = httpx.Client(transport=httpx.MockTransport(handler))
         monkeypatch.setattr("ng_flood.cli.Client", partial(Client, http=http))
-        code = main(["--sites", str(sites), "--evidence", str(tmp_path / "kml"), *flags])
+        code = main(["--sites", str(sites), "--evidence", str(tmp_path / "kml"), *flags], NOW)
         return code, [json.loads(line) for line in capsys.readouterr().out.splitlines()]
 
     monkeypatch.setenv("GOOGLE_FLOOD_API_KEY", "google")
