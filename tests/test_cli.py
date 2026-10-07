@@ -13,6 +13,7 @@ import pytest
 from test_client import KML, STATUS, Handler, server
 
 from ng_flood import Assessment, Client, Failure
+from ng_flood.assess import FIELDS
 from ng_flood.cli import Site, main, read_sites, records
 
 NOW = datetime(2026, 10, 4, tzinfo=UTC)
@@ -41,6 +42,7 @@ def test_each_site_gets_one_record_with_its_id() -> None:
     first, second = records(sites, [dry, Failure("not a coordinate in Nigeria")], NOW)
     assert (first["id"], first["verdict"], first["lead_hours"]) == ("hh-1", "NONE", None)
     assert first["lga"] == "Lokoja"
+    assert set(dry.as_dict()) == FIELDS
     assert second == {"id": "hh-2", "error": "not a coordinate in Nigeria", "checked": STAMP}
 
 
@@ -96,6 +98,7 @@ def test_usage_errors_exit_2_before_any_call(
         ["8.0", "7.0", "--sites", str(bad)],
         ["8.0", "7.0", "--keep", "lga"],
         ["--sites", str(bad), "--json"],
+        ["--sites", str(bad), "--keep", "lga, area"],
     ):
         with pytest.raises(SystemExit):
             main(argv)
