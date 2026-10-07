@@ -126,6 +126,17 @@ class Assessment:
         }
 
 
+FIELDS = frozenset(Assessment.__dataclass_fields__) | {
+    "verdict",
+    "lead_hours",
+    "version",
+    "cover_km",
+    "stale_hours",
+    "notice",
+}
+"""Every key of a record."""
+
+
 def select(
     lat: float, lng: float, statuses: tuple[Status, ...], flashes: tuple[Flash, ...], now: datetime
 ) -> Selection:

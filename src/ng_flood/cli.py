@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .assess import COVER_KM, NOTICE, Assessment
+from .assess import COVER_KM, FIELDS, NOTICE, Assessment
 from .client import Client, Failure
 
 Site = tuple[str, float, float, dict[str, str]]
@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
     parser.add_argument(
         "--keep",
         metavar="COLUMNS",
-        type=lambda text: text.split(","),
+        type=lambda text: [name.strip() for name in text.split(",") if name.strip()],
         default=[],
         help="with --sites, copy these comma-separated CSV columns into each record, e.g. lga,ward",
     )
@@ -51,6 +51,8 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         parser.error("give LAT LNG or --sites CSV")
     if args.keep and not args.sites:
         parser.error("--keep needs --sites")
+    if clash := sorted(FIELDS.union(("id", "error")).intersection(args.keep)):
+        parser.error(f"--keep cannot take {', '.join(clash)}: every record has its own")
     if args.json and args.sites:
         parser.error("--sites always prints JSON; drop --json")
     sites: list[Site] | str = [("", args.lat, args.lng, {})]
