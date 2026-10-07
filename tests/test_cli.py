@@ -97,6 +97,18 @@ def test_a_batch_run_from_end_to_end(
         0,
         [(REVERSE["area"], 1, 0), (None, 1, 1)],
     )
+    log = tmp_path / "log.jsonl"
+    for _ in range(2):
+        go(server([STATUS]), "--by", "postcode", "--records", str(log))
+    logged = [json.loads(line) for line in log.read_text().splitlines()]
+    assert [(row["id"], row.get("verdict")) for row in logged] == [
+        ("hh-1", "FORECAST"),
+        ("hh-2", None),
+    ] * 2
+    assert go(server([STATUS]), "--by", "postcode", "--records", str(tmp_path / "no" / "log")) == (
+        2,
+        [],
+    )
     monkeypatch.delenv("NG_POSTCODE_API_KEY")
     assert go(server([STATUS]), "--postcode") == (2, [])
     assert go(server([STATUS]), "--by", "postcode") == (2, [])
@@ -123,6 +135,7 @@ def test_usage_errors_exit_2_before_any_call(
         ["8.0", "7.0", "--sites", str(bad)],
         ["8.0", "7.0", "--keep", "lga"],
         ["8.0", "7.0", "--by", "postcode"],
+        ["--sites", str(bad), "--records", "log.jsonl"],
         ["--sites", str(bad), "--json"],
         ["--sites", str(bad), "--keep", "lga, area"],
     ):

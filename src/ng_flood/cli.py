@@ -50,6 +50,12 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         "implies --postcode",
     )
     parser.add_argument(
+        "--records",
+        metavar="FILE",
+        type=Path,
+        help="with --by, append each site's record to this file",
+    )
+    parser.add_argument(
         "--evidence",
         metavar="DIR",
         type=Path,
@@ -60,6 +66,8 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         parser.error("give LAT LNG or --sites CSV")
     if (args.keep or args.by) and not args.sites:
         parser.error("--keep and --by need --sites")
+    if args.records and not args.by:
+        parser.error("--records needs --by")
     if clash := sorted(FIELDS.union(("id", "error")).intersection(args.keep)):
         parser.error(f"--keep cannot take {', '.join(clash)}: every record has its own")
     if args.json and args.sites:
@@ -68,6 +76,8 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
     try:
         if args.evidence:
             args.evidence.mkdir(parents=True, exist_ok=True)
+        if args.records:
+            args.records.open("a").close()
         if args.sites:
             with open(args.sites, newline="", encoding="utf-8-sig") as file:
                 sites = read_sites(file, args.keep)
@@ -87,6 +97,9 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
     with Client(key, nipost, evidence=args.evidence) as client:
         results = client.assess_many([(lat, lng) for _, lat, lng, _ in sites], now)
     rows = results if isinstance(results, list) else [results] * len(sites)
+    if args.records:
+        with args.records.open("a", encoding="utf-8") as log:
+            log.writelines(json.dumps(record) + "\n" for record in records(sites, rows, now))
     if args.sites:
         for record in roll_up(rows, now) if args.by else records(sites, rows, now):
             print(json.dumps(record))
