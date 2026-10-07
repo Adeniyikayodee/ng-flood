@@ -306,3 +306,27 @@ def test_a_batch_downloads_the_forecasts_once() -> None:
             "/v1/serializedPolygons/here",
         ]
     )
+
+
+def test_an_endpoint_that_keeps_failing_is_left_alone() -> None:
+    paths: list[str] = []
+    maps = [{"level": "LOW", "serializedPolygonId": f"p{i}"} for i in range(5)]
+    status = STATUS | {"inundationMapSet": {"inundationMaps": maps}}
+
+    def counted(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return server([status], broken=("serializedPolygons", "reverse"))(request)
+
+    http = httpx.Client(transport=httpx.MockTransport(counted))
+    with Client("google", "nipost", http=http) as client:
+        results = client.assess_many([(LAT, LNG)] * 5, NOW)
+    assert isinstance(results, list)
+    assert sorted({path.rsplit("/", 1)[-1] for path in paths if "Polygons" in path}) == [
+        "p0",
+        "p1",
+        "p2",
+    ]
+    assert sum("reverse" in path for path in paths) == 3
+    last = ok(results[-1])
+    assert (last.verdict, last.gaps) == ("UNKNOWN", ("5 forecast areas unavailable",))
+    assert last.notes == ("postcode lookup stopped after 3 failures",)

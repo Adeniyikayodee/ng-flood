@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -29,6 +30,8 @@ MAX_PAGES = 100
 WAITS = (0.5, 2.0)
 """Seconds before each retry of a 429, a 5xx or a network error."""
 MAX_WAIT = 30.0
+STRIKES = 3
+"""Failures in a row before an endpoint is left alone for the rest of the run."""
 REVERSE_M = 250.0
 _NIGERIA = parse_kml(files("ng_flood").joinpath("nigeria.kml").read_text()) or ()
 """The border, about 10 km generous so border and coastal sites pass."""
@@ -75,6 +78,7 @@ class Client:
         self._owns_http = http is None
         self._headers = {"X-Goog-Api-Key": google_key}
         self._nipost = Nipost(nipost_key, http=self._http) if nipost_key else None
+        self._strikes: Counter[str] = Counter()
 
     def assess(self, lat: float, lng: float, now: datetime | None = None) -> Assessment | Failure:
         results = self.assess_many([(lat, lng)], now)
@@ -91,6 +95,7 @@ class Client:
             Failure("not a coordinate in Nigeria") for _ in points
         ]
         inside = [i for i, point in enumerate(points) if _in_nigeria(*point)]
+        self._strikes.clear()
         if not inside:
             return results
         statuses = self._all(google.STATUS_PATH, {"regionCode": "NG"}, google.statuses)
@@ -151,8 +156,14 @@ class Client:
         return Failure(f"more than {MAX_PAGES} pages from {path}")
 
     def _kml(self, polygon_id: str) -> str | None:
+        if self._strikes["areas"] >= STRIKES:
+            return None
         raw = self._call("GET", google.POLYGON_PATH + quote(polygon_id, safe=""))
+        self._strike("areas", isinstance(raw, Failure))
         return None if isinstance(raw, Failure) else google.kml(raw)
+
+    def _strike(self, endpoint: str, failed: bool) -> None:
+        self._strikes[endpoint] = self._strikes[endpoint] + 1 if failed else 0
 
     def _call(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any | Failure:
         for wait in (*WAITS, None):
@@ -181,7 +192,10 @@ class Client:
         """The postcode and its area, or a note saying why there is none."""
         if self._nipost is None:
             return None, None, ()
+        if self._strikes["postcodes"] >= STRIKES:
+            return None, None, (f"postcode lookup stopped after {STRIKES} failures",)
         found = self._nipost.send(nipost.reverse(nipost.Coordinate(lat, lng), REVERSE_M))
+        self._strike("postcodes", not isinstance(found, nipost.Reverse))
         if not isinstance(found, nipost.Reverse):
             return None, None, (f"postcode lookup failed: {getattr(found, 'code', found)}",)
         if found.area is None:
