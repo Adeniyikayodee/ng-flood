@@ -18,7 +18,7 @@ from .client import Client, Failure
 Site = tuple[str, float, float, dict[str, str]]
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ng-flood", description=__doc__)
     parser.add_argument("lat", type=float, nargs="?")
     parser.add_argument("lng", type=float, nargs="?")
@@ -69,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     if isinstance(sites, str) or not key:
         print(sites, file=sys.stderr)
         return 2
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     with Client(key, nipost, evidence=args.evidence) as client:
         results = client.assess_many([(lat, lng) for _, lat, lng, _ in sites], now)
     rows = results if isinstance(results, list) else [results] * len(sites)
