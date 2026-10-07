@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from math import isfinite
 from typing import Any, Generic, TypeVar
 
 T = TypeVar("T")
@@ -137,7 +138,9 @@ def _text(data: Mapping[str, Any], key: str) -> str | None:
 
 def _number(data: Mapping[str, Any], key: str) -> float | None:
     value = data.get(key)
-    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+    if isinstance(value, bool) or not isinstance(value, int | float) or not isfinite(value):
+        return None
+    return float(value)
 
 
 def _time(value: Any) -> datetime | None:
