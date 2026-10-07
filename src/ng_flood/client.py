@@ -114,9 +114,9 @@ class Client:
                     kml[pid] = self._kml(pid) or ""
                     polygons[pid] = parse_kml(kml[pid])
                     digests[pid] = sha256(kml[pid].encode()).hexdigest()
-            postcode, area = self._label(lat, lng)
+            postcode, area, why = self._label(lat, lng)
             result = assess(lat, lng, selection, polygons, tuple(gaps), digests)
-            results[i] = replace(result, postcode=postcode, area=area)
+            results[i] = replace(result, postcode=postcode, area=area, notes=result.notes + why)
             if self._evidence:
                 for pid in result.areas:
                     (self._evidence / f"{digests[pid]}.kml").write_text(kml[pid], encoding="utf-8")
@@ -177,10 +177,13 @@ class Client:
             sleep(wait)
         return failure
 
-    def _label(self, lat: float, lng: float) -> tuple[str | None, str | None]:
+    def _label(self, lat: float, lng: float) -> tuple[str | None, str | None, tuple[str, ...]]:
+        """The postcode and its area, or a note saying why there is none."""
         if self._nipost is None:
-            return None, None
+            return None, None, ()
         found = self._nipost.send(nipost.reverse(nipost.Coordinate(lat, lng), REVERSE_M))
         if not isinstance(found, nipost.Reverse):
-            return None, None
-        return (found.unit.postcode or None) if found.unit else None, found.area
+            return None, None, (f"postcode lookup failed: {getattr(found, 'code', found)}",)
+        if found.area is None:
+            return None, None, (f"no postcode within {REVERSE_M:g} m",)
+        return (found.unit.postcode or None) if found.unit else None, found.area, ()
