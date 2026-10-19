@@ -30,6 +30,7 @@ ng-flood = "ng_flood.cli:main"
 ng-flood-mcp = "ng_flood.server:main"
 
 [project.urls]
+Homepage = "https://www.georiskmap.org/about"
 Repository = "https://github.com/Adeniyikayodee/ng-flood"
 Issues = "https://github.com/Adeniyikayodee/ng-flood/issues"
 

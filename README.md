@@ -1,7 +1,29 @@
 # ng-flood
 
-Google's flood forecast for a Nigerian coordinate, labelled with its NIPOST
-postcode area.
+**Know which communities a flood will reach, before it arrives.**
+
+ng-flood checks any point in Nigeria against Google's flood forecasts and names
+its NIPOST postcode area. One coordinate, or a whole list of households, becomes
+a clear verdict, a lead time, and a record you can audit later.
+
+A research project by the
+[Geohazards Risk Mapping Initiative](https://www.georiskmap.org/about) (GRMI).
+
+---
+
+Floods in Nigeria can be forecast days ahead, but the forecasts are drawn as river
+gauges and map polygons, not as the places people live. Responders work by
+household, ward and postcode. ng-flood connects the two: it turns a forecast
+into a list of who is inside it, how soon, and how sure we can be.
+
+- **Plain verdicts.** Every site is `FORECAST`, `WATCH`, `NONE` or `UNKNOWN`,
+  and it says `UNKNOWN` rather than guess.
+- **Built for planning.** Check thousands of sites in one run and roll them up
+  by postcode area, worst first.
+- **Evidence with every answer.** Each record names the gauge, the forecast,
+  and the exact map it was judged against.
+- **Private by default.** Forecasts are downloaded and compared on your machine.
+  Site locations stay there.
 
 ![ng-flood checking one coordinate with its lead time, a CSV of four sites with one for each verdict, then 240 households rolled up by postcode area](docs/demo.gif)
 
@@ -153,6 +175,18 @@ thresholds are provisional until they are checked against live data.
 ```sh
 uv run --group dev ruff check . && uv run --group dev mypy && uv run --group dev pytest
 ```
+
+## Research
+
+ng-flood is part of the research of the
+[Geohazards Risk Mapping Initiative](https://www.georiskmap.org/about), which
+develops and shares flood risk maps for communities in Nigeria using geospatial
+technology. It studies one question: can a global flood forecast be turned into
+an early warning that a local responder can act on, place by place?
+
+It is research software. Its thresholds are provisional and its verdicts have
+not yet been validated against observed floods. Findings, issues and data from
+the field are welcome.
 
 ## Attribution
 
