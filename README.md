@@ -3,8 +3,8 @@
 **Know which communities a flood will reach, before it arrives.**
 
 ng-flood checks any point in Nigeria against Google's flood forecasts and names
-its NIPOST postcode area. One coordinate, or a whole list of households, becomes
-a clear verdict, a lead time, and a record you can audit later.
+its state and LGA. One coordinate, or a whole list of households, becomes a
+clear verdict, a lead time, and a record you can audit later.
 
 A research project by the
 [Geohazards Risk Mapping Initiative](https://www.georiskmap.org/about) (GRMI).
@@ -13,13 +13,13 @@ A research project by the
 
 Floods in Nigeria can be forecast days ahead, but the forecasts are drawn as river
 gauges and map polygons, not as the places people live. Responders work by
-household, ward and postcode. ng-flood connects the two: it turns a forecast
+household, ward and LGA. ng-flood connects the two: it turns a forecast
 into a list of who is inside it, how soon, and how sure we can be.
 
 - **Plain verdicts.** Every site is `FORECAST`, `WATCH`, `NONE` or `UNKNOWN`,
   judged by the gauges on its own river, and it says `UNKNOWN` rather than guess.
 - **Built for planning.** Check thousands of sites in one run and roll them up
-  by postcode area, worst first.
+  by LGA, state, ward or postcode area, worst first.
 - **Evidence with every answer.** Each record names the gauge, the forecast,
   and the exact map it was judged against.
 - **Private by default.** Forecasts are downloaded and compared on your machine.
@@ -56,11 +56,12 @@ are downloaded once and each row becomes one JSON record, ready to append to a
 log:
 
 ```sh
-uvx ng-flood --sites households.csv --keep lga,ward --evidence kml/ >> triggers.jsonl
+uvx ng-flood --sites households.csv --keep ward --evidence kml/ >> triggers.jsonl
 ```
 
 ```json
-{"id": "hh-0142", "lga": "Lokoja", "ward": "A", "verdict": "FORECAST", "lead_hours": 48.0,
+{"id": "hh-0142", "ward": "A", "state": "Kogi", "lga": "Lokoja", "lga_pcode": "NG023012",
+ "verdict": "FORECAST", "lead_hours": 48.0,
  "checked": "2026-10-04T12:00:00+00:00", "nearest_gauge_km": 15.6,
  "riverine": {"gauge_id": "...", "level": "HIGH", "severity": "SEVERE", "polygon_id": "...",
               "issued": "...", "starts": "...", "ends": "...", "change_m": [0.4, 0.9]},
@@ -75,28 +76,40 @@ version and thresholds that judged it, so a decision made on it can be audited
 later. `--evidence` saves that KML, named by its hash. `lead_hours` is the time
 until the riverine forecast window opens.
 
-`--keep` copies CSV columns into each record, so a count by LGA is one line:
+Every record names its state and LGA, with OCHA's P-code to join humanitarian
+data, and `--keep` copies other CSV columns such as `ward`. A count by LGA is
+one line:
 
 ```sh
 jq -r '[.lga, .verdict] | @tsv' triggers.jsonl | sort | uniq -c
 ```
 
-For a plan by postcode area, add `--by postcode`. Each line is then one NIPOST
-area, worst first, and `--records` keeps the site records behind it:
+For a plan by LGA, add `--by lga`. Each line is then one LGA, worst first, and
+`--records` keeps the site records behind it:
 
 ```sh
-uvx ng-flood --sites households.csv --by postcode --records triggers.jsonl
+uvx ng-flood --sites households.csv --by lga --records triggers.jsonl
 ```
 
 ```json
-{"area": "KG-05-A12-FK", "sites": 12, "verdict": "FORECAST", "FORECAST": 3, "WATCH": 0,
- "UNKNOWN": 1, "NONE": 8, "errors": 0, "lead_hours": 36.0, "checked": "...", "...": "..."}
+{"area": "NG023012", "state": "Kogi", "lga": "Lokoja", "sites": 12, "verdict": "FORECAST",
+ "FORECAST": 3, "WATCH": 0, "UNKNOWN": 1, "NONE": 8, "errors": 0, "lead_hours": 36.0, "...": "..."}
 ```
+
+`--by state` works the same way. The boundaries ship with ng-flood, so neither
+sends a site anywhere. For wards or communities, bring your own polygons, such
+as GRID3's ward boundaries, and roll up by one of their properties:
+
+```sh
+uvx ng-flood --sites households.csv --areas wards.geojson --by wardname
+```
+
+`--by postcode` rolls up by NIPOST postcode area, and sends each site to NIPOST.
 
 An area takes the worst verdict among its sites, and `UNKNOWN` outranks `NONE`,
 so one blind site stops an area reading as clear. `lead_hours` is the shortest
-among them. Sites with no postcode share a row whose `area` is `null`, and
-failed sites are counted in `errors`, so the rows always add up to the CSV.
+among them. Sites with no area share a row whose `area` is `null`, and failed
+sites are counted in `errors`, so the rows always add up to the CSV.
 
 A row that cannot be read gets an `error` and does not stop the rest. If Google
 cannot be reached, every site still gets an `error` record with the time, so a
@@ -178,8 +191,9 @@ observed floods.
 
 - Input is a coordinate. NIPOST does not return a coordinate for a postcode
   below its restricted lookup level, so a typed postcode cannot be checked.
-- The postcode is a label, not a verification. Flash flood cells are about
-  20 km, so the result is reported by area, not by building.
+- The LGA and postcode are labels, not verification. LGA lines are simplified
+  to about 500 m, so a site on a boundary may land in its neighbour. Flash flood
+  cells are about 20 km, so the result is reported by area, not by building.
 - A coordinate must fall inside Nigeria's border, drawn about 10 km generous.
 - Nothing from NIPOST or Google is stored, unless you pass `--evidence` or
   `--fetch`. The MCP server keeps the forecasts in memory for ten minutes.
