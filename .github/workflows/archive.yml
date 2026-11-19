@@ -1,0 +1,40 @@
+name: Archive
+
+# Google serves only the latest forecast. Keep one snapshot of Nigeria a day on the
+# archive branch, so verdicts can be checked against the floods that followed.
+# Does nothing until the GOOGLE_FLOOD_API_KEY secret is set.
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: archive
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_FLOOD_API_KEY: ${{ secrets.GOOGLE_FLOOD_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.GOOGLE_FLOOD_API_KEY != ''
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        if: env.GOOGLE_FLOOD_API_KEY != ''
+      - name: Fetch
+        if: env.GOOGLE_FLOOD_API_KEY != ''
+        run: uv run --no-dev ng-flood --fetch "$RUNNER_TEMP/snapshot.json.gz"
+      - name: Commit to the archive branch
+        if: env.GOOGLE_FLOOD_API_KEY != ''
+        run: |
+          path="$(date -u +%Y/%m/%d).json.gz"
+          if git fetch --depth 1 origin archive; then git switch archive; else git switch --orphan archive; fi
+          mkdir -p "$(dirname "$path")"
+          mv "$RUNNER_TEMP/snapshot.json.gz" "$path"
+          git add "$path"
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "chore(archive): $path"
+          git push origin archive
