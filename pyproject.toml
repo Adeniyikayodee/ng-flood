@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ng-flood"
-version = "0.2.0"
+version = "0.2.1"
 description = "Google's flood forecast for a Nigerian coordinate, labelled with its NIPOST postcode area."
 readme = "README.md"
 requires-python = ">=3.11"
