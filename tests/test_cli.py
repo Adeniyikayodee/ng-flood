@@ -35,6 +35,13 @@ def test_reads_sites_and_keeps_a_bad_row_in_place() -> None:
     assert math.isnan(sites[1][1])
 
 
+def test_columns_can_be_named_as_a_kobo_export_names_them() -> None:
+    lines = ["_uuid,_gps_latitude,_gps_longitude", "u1,8.0,7.0"]
+    assert read_sites(iter(lines), (), ("_uuid", "_gps_latitude", "_gps_longitude")) == [
+        ("u1", 8.0, 7.0, {})
+    ]
+
+
 def test_a_csv_without_the_columns_is_refused() -> None:
     lines = ["id,lat,lng", "a,8.0,7.0"]
     assert read_sites(iter(lines), ["ward"]) == "the CSV has no column named ward"

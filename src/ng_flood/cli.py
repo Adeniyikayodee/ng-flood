@@ -36,6 +36,13 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         metavar="CSV",
         help="check every row of a CSV with id, lat and lng columns; prints one JSON record a line",
     )
+    for column in ("id", "lat", "lng"):
+        parser.add_argument(
+            f"--{column}-col",
+            metavar="NAME",
+            default=column,
+            help=f"with --sites, the CSV column that holds the {column} (default {column})",
+        )
     parser.add_argument(
         "--keep",
         metavar="COLUMNS",
@@ -121,7 +128,7 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
             args.records.open("a").close()
         if args.sites:
             with open(args.sites, newline="", encoding="utf-8-sig") as file:
-                sites = read_sites(file, args.keep)
+                sites = read_sites(file, args.keep, (args.id_col, args.lat_col, args.lng_col))
     except OSError as error:
         sites = str(error)
     except (UnicodeError, csv.Error) as error:
@@ -205,14 +212,19 @@ def load(path: Path) -> Snapshot | None:
         return None
 
 
-def read_sites(lines: Iterator[str], keep: Sequence[str] = ()) -> list[Site] | str:
+def read_sites(
+    lines: Iterator[str],
+    keep: Sequence[str] = (),
+    columns: tuple[str, str, str] = ("id", "lat", "lng"),
+) -> list[Site] | str:
     """Rows of a CSV with id, lat and lng columns, and any columns to keep. A number
     that cannot be read becomes NaN, so its row fails alone instead of stopping the batch."""
     reader = csv.DictReader(lines)
-    if lacks := {"id", "lat", "lng", *keep} - set(reader.fieldnames or ()):
+    if lacks := {*columns, *keep} - set(reader.fieldnames or ()):
         return f"the CSV has no column named {' or '.join(sorted(lacks))}"
+    sid, lat, lng = columns
     return [
-        (row["id"], _number(row["lat"]), _number(row["lng"]), {k: row[k] for k in keep})
+        (row[sid], _number(row[lat]), _number(row[lng]), {k: row[k] for k in keep})
         for row in reader
     ]
 
