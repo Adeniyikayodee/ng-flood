@@ -48,9 +48,14 @@ class Selection:
 
     @property
     def polygon_ids(self) -> tuple[str, ...]:
-        ids = [pid for s in self.statuses for pid in _ids(s)]
-        ids += [pid for f in self.flashes for pid in (f.highly_likely_id, f.likely_id) if pid]
-        return tuple(dict.fromkeys(ids))
+        return area_ids(self.statuses, self.flashes)
+
+
+def area_ids(statuses: tuple[Status, ...], flashes: tuple[Flash, ...]) -> tuple[str, ...]:
+    """Every area the forecasts name that could hold a point."""
+    ids = [pid for s in statuses for pid in _ids(s)]
+    ids += [pid for f in flashes for pid in (f.highly_likely_id, f.likely_id) if pid]
+    return tuple(dict.fromkeys(ids))
 
 
 @dataclass(frozen=True, slots=True)

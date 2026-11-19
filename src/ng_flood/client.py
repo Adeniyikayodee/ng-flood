@@ -11,7 +11,7 @@ from importlib.resources import files
 from math import isfinite
 from pathlib import Path
 from time import sleep
-from typing import Any, TypeVar
+from typing import Any
 from urllib.parse import quote
 
 import httpx
@@ -19,10 +19,9 @@ from ng_postcode import api as nipost
 from ng_postcode.client import Client as Nipost
 
 from . import google
-from .assess import Assessment, assess, select, some
+from .assess import Assessment, area_ids, assess, select
 from .geometry import Polygon, contains, parse_kml
-
-T = TypeVar("T")
+from .snapshot import Snapshot, read
 
 TIMEOUT = 10.0
 MAX_PAGES = 100
@@ -84,10 +83,30 @@ class Client:
         results = self.assess_many([(lat, lng)], now)
         return results if isinstance(results, Failure) else results[0]
 
+    def fetch(self, now: datetime | None = None, *, whole: bool = False) -> Snapshot | Failure:
+        """Download Nigeria's forecasts; with `whole`, every area they name as well."""
+        self._strikes.clear()
+        fetched = now or datetime.now(UTC)
+        statuses = self._pages(google.STATUS_PATH, {"regionCode": "NG"}, google.statuses)
+        if isinstance(statuses, Failure):
+            return statuses
+        flashes = self._pages(google.FLASH_PATH, {"countryCodes": ["NG"]}, google.flashes)
+        snapshot = Snapshot(
+            fetched, statuses, str(flashes) if isinstance(flashes, Failure) else flashes
+        )
+        forecasts = read(snapshot)
+        if whole and forecasts:
+            ids = area_ids(forecasts.statuses, forecasts.flashes)
+            snapshot.kml, snapshot.complete = {pid: self._kml(pid) for pid in ids}, True
+        return snapshot
+
     def assess_many(
-        self, points: Sequence[tuple[float, float]], now: datetime | None = None
+        self,
+        points: Sequence[tuple[float, float]],
+        now: datetime | None = None,
+        snapshot: Snapshot | None = None,
     ) -> list[Assessment | Failure] | Failure:
-        """Assess every (lat, lng) from one download of the forecasts.
+        """Assess every (lat, lng) from one download of the forecasts, or from `snapshot`.
 
         A point outside Nigeria fails alone. A riverine outage fails the batch, and
         so does evidence that cannot be saved.
@@ -99,36 +118,34 @@ class Client:
         self._strikes.clear()
         if not inside:
             return results
-        statuses = self._all(google.STATUS_PATH, {"regionCode": "NG"}, google.statuses)
-        if isinstance(statuses, Failure):
-            return statuses
-        flashes = self._all(google.FLASH_PATH, {"countryCodes": ["NG"]}, google.flashes)
-        gaps = some(statuses[1], "riverine forecast", "unreadable")
-        if isinstance(flashes, Failure):
-            gaps.append(f"flash floods unavailable: {flashes}")
-            flashes = ((), 0)
-        gaps += some(flashes[1], "flash forecast", "unreadable")
+        source = snapshot or self.fetch()
+        if isinstance(source, Failure):
+            return source
+        forecasts = read(source)
+        if forecasts is None:
+            return Failure("the snapshot holds a page Google would not send")
         now = now or datetime.now(UTC)
         polygons: dict[str, tuple[Polygon, ...] | None] = {}
-        kml: dict[str, str] = {}
         digests: dict[str, str] = {}
         saved: set[str] = set()
         for i in inside:
             lat, lng = points[i]
-            selection = select(lat, lng, statuses[0], flashes[0], now)
+            selection = select(lat, lng, forecasts.statuses, forecasts.flashes, now)
             for pid in selection.polygon_ids:
                 if pid not in polygons:
-                    kml[pid] = self._kml(pid) or ""
-                    polygons[pid] = parse_kml(kml[pid])
-                    digests[pid] = sha256(kml[pid].encode()).hexdigest()
+                    if pid not in source.kml and not source.complete:
+                        source.kml[pid] = self._kml(pid)
+                    text = source.kml.get(pid) or ""
+                    polygons[pid] = parse_kml(text)
+                    digests[pid] = sha256(text.encode()).hexdigest()
             postcode, area, why = self._label(lat, lng)
-            result = assess(lat, lng, selection, polygons, tuple(gaps), digests)
+            result = assess(lat, lng, selection, polygons, forecasts.gaps, digests)
             results[i] = replace(result, postcode=postcode, area=area, notes=result.notes + why)
             if self._evidence:
                 try:
                     for pid in result.areas.keys() - saved:
                         path = self._evidence / f"{digests[pid]}.kml"
-                        path.write_text(kml[pid], encoding="utf-8")
+                        path.write_text(source.kml.get(pid) or "", encoding="utf-8")
                 except OSError as error:
                     return Failure(f"evidence not saved: {error}")
                 saved |= result.areas.keys()
@@ -144,11 +161,10 @@ class Client:
     def __exit__(self, *exc_info: object) -> None:
         self.close()
 
-    def _all(
-        self, path: str, body: dict[str, Any], read: Callable[[Any], google.Page[T] | None]
-    ) -> tuple[tuple[T, ...], int] | Failure:
-        items: tuple[T, ...] = ()
-        skipped = 0
+    def _pages(
+        self, path: str, body: dict[str, Any], read: Callable[[Any], google.Page[Any] | None]
+    ) -> list[Any] | Failure:
+        pages: list[Any] = []
         token: str | None = None
         for _ in range(MAX_PAGES):
             raw = self._call("POST", path, body | ({"pageToken": token} if token else {}))
@@ -157,9 +173,10 @@ class Client:
             page = read(raw)
             if page is None:
                 return Failure(f"unexpected body from {path}")
-            items, skipped, token = items + page.items, skipped + page.skipped, page.next_token
+            pages.append(raw)
+            token = page.next_token
             if token is None:
-                return items, skipped
+                return pages
         return Failure(f"more than {MAX_PAGES} pages from {path}")
 
     def _kml(self, polygon_id: str) -> str | None:
