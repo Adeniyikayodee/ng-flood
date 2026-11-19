@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from functools import cache
 from importlib.resources import files
 
-from .geometry import Polygon, contains
+from .geometry import Polygon, contains, scaled
 
 SOURCE = "HydroBASINS v1c level 8"
 
@@ -51,11 +51,7 @@ def bundled() -> Basins:
     scale = data["scale"]
     return Basins(
         [
-            (b, down, tuple(Polygon(_ring(ring, scale)) for ring in rings))
+            (b, down, tuple(Polygon(scaled(ring, scale)) for ring in rings))
             for b, down, rings in data["basins"]
         ]
     )
-
-
-def _ring(flat: list[int], scale: int) -> tuple[tuple[float, float], ...]:
-    return tuple((x / scale, y / scale) for x, y in zip(flat[::2], flat[1::2], strict=True))

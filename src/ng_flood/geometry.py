@@ -50,6 +50,11 @@ def contains(polygons: tuple[Polygon, ...], lat: float, lng: float) -> bool:
     )
 
 
+def scaled(flat: list[int], scale: int) -> Ring:
+    """A ring stored as whole numbers, x and y in turn, times `scale`."""
+    return tuple((x / scale, y / scale) for x, y in zip(flat[::2], flat[1::2], strict=True))
+
+
 def _inside(ring: Ring, lat: float, lng: float) -> bool:
     inside = False
     for (x1, y1), (x2, y2) in zip(ring, ring[1:] + ring[:1], strict=True):
