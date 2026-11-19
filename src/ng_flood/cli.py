@@ -184,7 +184,10 @@ def render(a: Assessment) -> str:
         ),
         f"Flash:    {a.flash or 'none forecast'} (20 km cells)",
         *(
-            [f"Watch:    gauge {w.gauge_id} is {w.severity} {w.km:g} km away and has no map"]
+            [
+                f"Watch:    gauge {w.gauge_id} is {w.severity} {w.km:g} km away and "
+                + ("its alert area holds the point" if w.alert_area else "has no map")
+            ]
             if (w := a.watch)
             else []
         ),

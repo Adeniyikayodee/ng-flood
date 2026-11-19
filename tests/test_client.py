@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -93,11 +94,16 @@ def test_severity_outranks_level_across_gauges() -> None:
     assert (found.gauge_id, found.level) == ("g1", "LOW")
 
 
-def test_alert_area_counts_when_no_map_holds_the_point() -> None:
-    status = STATUS | {"inundationMapSet": {}, "serializedNotificationPolygonId": "here"}
+def test_an_alert_area_is_a_watch_not_a_forecast() -> None:
+    maps = {"inundationMaps": [{"level": "LOW", "serializedPolygonId": "far"}]}
+    status = STATUS | {"inundationMapSet": maps, "serializedNotificationPolygonId": "here"}
     found = ok(run(server([status])))
-    assert found.riverine is not None
-    assert found.riverine.level == "ALERT_AREA"
+    assert (found.verdict, found.riverine) == ("WATCH", None)
+    assert found.watch == Watch("g1", "SEVERE", 15.6, "here")
+    assert found.areas == {"here": sha256(KML["here"].encode()).hexdigest()}
+    assert "its alert area holds the point" in render(found)
+    gone = ok(run(server([status], broken=("serializedPolygons/here",))))
+    assert (gone.verdict, gone.gaps) == ("UNKNOWN", ("1 forecast area unavailable",))
 
 
 def test_a_gauge_that_forecasts_no_flooding_has_no_area() -> None:
@@ -152,7 +158,7 @@ def test_an_elevated_gauge_without_a_map_is_a_watch() -> None:
     found = ok(run(server([STATUS | {"inundationMapSet": {}}, DRY])))
     assert found.verdict == "WATCH"
     assert found.watch == Watch("g1", "SEVERE", 15.6)
-    assert "g1 is SEVERE 15.6 km away" in render(found)
+    assert "g1 is SEVERE 15.6 km away and has no map" in render(found)
     assert found.as_dict()["watch"]["severity"] == "SEVERE"
     assert ok(run(server([STATUS]), lat=9.5)).watch is None
 

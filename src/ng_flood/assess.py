@@ -23,8 +23,7 @@ RANGE_KM = 150.0
 COVER_KM = 50.0
 """NONE needs a fresh gauge this close. Provisional until checked against live data."""
 STALE = timedelta(hours=48)
-ALERT_AREA = "ALERT_AREA"
-_LEVELS = ("HIGH", "MEDIUM", "LOW", ALERT_AREA)
+_LEVELS = ("HIGH", "MEDIUM", "LOW")
 _SEVERITIES = ("EXTREME", "SEVERE", "ABOVE_NORMAL")
 _KNOWN = (*_SEVERITIES, "NO_FLOODING")
 NOTICE = (
@@ -47,7 +46,7 @@ class Selection:
 
     @property
     def polygon_ids(self) -> tuple[str, ...]:
-        ids = [pid for s in self.statuses for _, pid in _areas(s)]
+        ids = [pid for s in self.statuses for pid in _ids(s)]
         ids += [pid for f in self.flashes for pid in (f.highly_likely_id, f.likely_id) if pid]
         return tuple(dict.fromkeys(ids))
 
@@ -56,7 +55,7 @@ class Selection:
 class Riverine:
     gauge_id: str
     level: str
-    """HIGH, MEDIUM or LOW inundation area, or ALERT_AREA."""
+    """HIGH, MEDIUM or LOW inundation area."""
     severity: str
     trend: str | None
     map_type: str | None
@@ -70,11 +69,13 @@ class Riverine:
 
 @dataclass(frozen=True, slots=True)
 class Watch:
-    """An elevated gauge that publishes no area to test the point against."""
+    """An elevated gauge with no inundation map holding the point: it has no map, or
+    the point is only inside the area Google alerts people in."""
 
     gauge_id: str
     severity: str
     km: float
+    alert_area: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,16 +190,21 @@ def assess(
         None,
     )
     close = [s for s in selection.statuses if km(s) <= COVER_KM]
-    near_ids = {pid for s in close for _, pid in _areas(s)}
-    far_ids = {pid for s in selection.statuses for _, pid in _areas(s)} - near_ids
+    near_ids = {pid for s in close for pid in _ids(s)}
+    far_ids = {pid for s in selection.statuses for pid in _ids(s)} - near_ids
     missing = [pid for pid in selection.polygon_ids if polygons.get(pid) is None]
     far = sum(pid in far_ids for pid in missing)
     stale, far_stale = selection.stale
     beyond = f"beyond {COVER_KM:g} km"
     worst = min(hits, key=_rank, default=None)
     known = sorted(km(s) for s in selection.statuses if s.severity in _KNOWN)
+    alerts = {s.gauge_id: pid for s in selection.statuses if (pid := _alert(s)) and inside(pid)}
     blind = [s for s in close if s.severity in _SEVERITIES and not _areas(s)]
-    risen = min(blind, key=lambda s: (_SEVERITIES.index(s.severity), km(s)), default=None)
+    risen = min(
+        [s for s in selection.statuses if s.gauge_id in alerts] + blind,
+        key=lambda s: (_SEVERITIES.index(s.severity), s.gauge_id not in alerts, km(s)),
+        default=None,
+    )
     return Assessment(
         lat,
         lng,
@@ -211,7 +217,11 @@ def assess(
             *some(stale, "stale forecast", "ignored"),
             *some(len(missing) - far, "forecast area", "unavailable"),
         ),
-        watch=Watch(risen.gauge_id, risen.severity, round(km(risen), 1)) if risen else None,
+        watch=(
+            Watch(risen.gauge_id, risen.severity, round(km(risen), 1), alerts.get(risen.gauge_id))
+            if risen
+            else None
+        ),
         nearest_gauge_km=round(known[0], 1) if known else None,
         notes=(
             *some(far_stale, "stale forecast", beyond),
@@ -233,8 +243,16 @@ def _areas(status: Status) -> list[tuple[str, str]]:
     """Areas of a gauge that forecasts flooding; any other gauge's areas are not a forecast."""
     if status.severity not in _SEVERITIES:
         return []
-    alert = [(ALERT_AREA, status.alert_polygon_id)] if status.alert_polygon_id else []
-    return [(level, pid) for level, pid in status.maps if level in _LEVELS] + alert
+    return [(level, pid) for level, pid in status.maps if level in _LEVELS]
+
+
+def _alert(status: Status) -> str | None:
+    """The area Google alerts people in: wider than any map, so never a forecast of water."""
+    return status.alert_polygon_id if status.severity in _SEVERITIES else None
+
+
+def _ids(status: Status) -> list[str]:
+    return [pid for _, pid in _areas(status)] + [pid for pid in [_alert(status)] if pid]
 
 
 def _rank(hit: Riverine) -> tuple[int, int]:
