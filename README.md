@@ -10,7 +10,7 @@ you if a flood is forecast there, how soon, and how sure it can be.
 A research project by the
 [Geohazards Risk Mapping Initiative](https://www.georiskmap.org/about) (GRMI).
 
-![ng-flood checking one coordinate in Lokoja, then four households with one of each answer, then 240 households in Kogi rolled up by LGA](docs/demo.gif)
+![ng-flood checking one coordinate in Lokoja, then four households with one of each answer, then 240 households in Kogi rolled up by LGA](https://raw.githubusercontent.com/Adeniyikayodee/ng-flood/main/docs/demo.gif)
 
 The recording runs the real program on a sample download.
 
@@ -134,7 +134,7 @@ day on its `archive` branch, to check answers against the floods that follow.
 
 ## How an answer is made
 
-![A coordinate is checked against Google's river forecasts on the same river and its flash flood forecasts, labelled with its state and LGA, given one of four answers, then rolled up into one row for each LGA](docs/flow.gif)
+![A coordinate is checked against Google's river forecasts on the same river and its flash flood forecasts, labelled with its state and LGA, given one of four answers, then rolled up into one row for each LGA](https://raw.githubusercontent.com/Adeniyikayodee/ng-flood/main/docs/flow.gif)
 
 Google measures rivers at **gauges**: real stations, and model points along
 the river. When a gauge forecasts a flood, it can publish a **flood map**, a
@@ -239,7 +239,7 @@ communities in Nigeria. This project asks one question: can a global flood
 forecast become a warning a local responder can act on, place by place?
 
 It is research software. Its rules have not yet been tested against real
-floods. [docs/validation.md](docs/validation.md) says how they will be.
+floods. [docs/validation.md](https://github.com/Adeniyikayodee/ng-flood/blob/main/docs/validation.md) says how they will be.
 Findings, issues and field data are welcome.
 
 ## Credits
