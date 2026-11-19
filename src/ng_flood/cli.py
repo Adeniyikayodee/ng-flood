@@ -12,14 +12,25 @@ from collections import Counter
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from .areas import read_geojson
 from .assess import FIELDS, NOTICE, Assessment, judged
 from .client import Client, Failure
 from .snapshot import Snapshot
 
-Site = tuple[str, float, float, dict[str, str | None]]
+GPS_M = 100.0
+"""A fix less accurate than this can put a site on the wrong side of a map's edge."""
+
+
+class Site(NamedTuple):
+    id: str
+    lat: float
+    lng: float
+    kept: dict[str, str | None]
+    notes: tuple[str, ...] = ()
+
+
 BY = {"lga": ("lga_pcode", "state", "lga"), "state": ("state",), "postcode": ("area",)}
 """The fields that key each roll-up; the first becomes the row's area."""
 VERDICTS = ("FORECAST", "WATCH", "UNKNOWN", "NONE")
@@ -43,6 +54,11 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
             default=column,
             help=f"with --sites, the CSV column that holds the {column} (default {column})",
         )
+    parser.add_argument(
+        "--accuracy-col",
+        metavar="NAME",
+        help=f"with --sites, a column of GPS accuracy in metres; worse than {GPS_M:g} is noted",
+    )
     parser.add_argument(
         "--keep",
         metavar="COLUMNS",
@@ -117,7 +133,7 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         parser.error(f"--keep cannot take {', '.join(clash)}: every record has its own")
     if args.json and args.sites:
         parser.error("--sites always prints JSON; drop --json")
-    sites: list[Site] | str = [("", args.lat, args.lng, {})]
+    sites: list[Site] | str = [Site("", args.lat, args.lng, {})]
     snapshot = load(args.snapshot) if args.snapshot else None
     if args.snapshot and snapshot is None:
         sites = f"{args.snapshot} is not a snapshot saved by --fetch"
@@ -128,7 +144,8 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
             args.records.open("a").close()
         if args.sites:
             with open(args.sites, newline="", encoding="utf-8-sig") as file:
-                sites = read_sites(file, args.keep, (args.id_col, args.lat_col, args.lng_col))
+                columns = (args.id_col, args.lat_col, args.lng_col)
+                sites = read_sites(file, args.keep, columns, args.accuracy_col)
     except OSError as error:
         sites = str(error)
     except (UnicodeError, csv.Error) as error:
@@ -139,7 +156,7 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         except (OSError, UnicodeError):
             areas = None
         sites = (
-            [(i, lat, lng, kept | {args.by: areas.at(lat, lng)}) for i, lat, lng, kept in sites]
+            [s._replace(kept=s.kept | {args.by: areas.at(s.lat, s.lng)}) for s in sites]
             if areas
             else f"{args.areas} has no polygon with a {args.by} property"
         )
@@ -161,13 +178,13 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         return 2
     now = args.at or now or datetime.now(UTC)
     with Client(key, nipost, evidence=args.evidence) as client:
-        results = client.assess_many([(lat, lng) for _, lat, lng, _ in sites], now, snapshot)
+        results = client.assess_many([(s.lat, s.lng) for s in sites], now, snapshot)
     rows = results if isinstance(results, list) else [results] * len(sites)
     if args.records:
         with args.records.open("a", encoding="utf-8") as log:
             log.writelines(json.dumps(record) + "\n" for record in records(sites, rows, now))
     if args.sites:
-        labels = [kept[args.by] for *_, kept in sites] if args.areas else None
+        labels = [s.kept[args.by] for s in sites] if args.areas else None
         rolled = roll_up(rows, now, args.by, labels) if args.by else records(sites, rows, now)
         for record in rolled:
             print(json.dumps(record))
@@ -216,15 +233,23 @@ def read_sites(
     lines: Iterator[str],
     keep: Sequence[str] = (),
     columns: tuple[str, str, str] = ("id", "lat", "lng"),
+    accuracy: str | None = None,
 ) -> list[Site] | str:
     """Rows of a CSV with id, lat and lng columns, and any columns to keep. A number
     that cannot be read becomes NaN, so its row fails alone instead of stopping the batch."""
     reader = csv.DictReader(lines)
-    if lacks := {*columns, *keep} - set(reader.fieldnames or ()):
+    wanted = {*columns, *keep} | ({accuracy} if accuracy else set())
+    if lacks := wanted - set(reader.fieldnames or ()):
         return f"the CSV has no column named {' or '.join(sorted(lacks))}"
     sid, lat, lng = columns
     return [
-        (row[sid], _number(row[lat]), _number(row[lng]), {k: row[k] for k in keep})
+        Site(
+            row[sid],
+            _number(row[lat]),
+            _number(row[lng]),
+            {k: row[k] for k in keep},
+            _gps(row[accuracy]) if accuracy else (),
+        )
         for row in reader
     ]
 
@@ -233,9 +258,11 @@ def records(
     sites: list[Site], results: Sequence[Assessment | Failure], now: datetime
 ) -> Iterator[dict[str, Any]]:
     """One record a site. A failure is logged too, so a run that found nothing leaves a trace."""
-    for (site, _, _, kept), result in zip(sites, results, strict=True):
+    for site, result in zip(sites, results, strict=True):
         error = {"error": str(result), "checked": now.isoformat()}
-        yield {"id": site} | kept | (error if isinstance(result, Failure) else result.as_dict())
+        body = error if isinstance(result, Failure) else result.as_dict()
+        notes = {"notes": [*body.get("notes", ()), *site.notes]} if site.notes else {}
+        yield {"id": site.id} | site.kept | body | notes
 
 
 def roll_up(
@@ -275,6 +302,11 @@ def roll_up(
             | judged()
         )
     return sorted(rows, key=lambda row: VERDICTS.index(row["verdict"] or "NONE"))
+
+
+def _gps(text: str | None) -> tuple[str, ...]:
+    m = _number(text)
+    return (f"GPS accurate to {m:g} m, worse than {GPS_M:g} m",) if m > GPS_M else ()
 
 
 def _number(text: str | None) -> float:

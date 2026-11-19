@@ -29,7 +29,7 @@ HIT = Riverine("g1", "LOW", "SEVERE", None, None, None, "here", None, None, None
 def test_reads_sites_and_keeps_a_bad_row_in_place() -> None:
     sites = read_sites(iter(CSV.splitlines()))
     assert isinstance(sites, list)
-    assert sites[0] == ("hh-1", 8.0, 7.0, {})
+    assert sites[0] == Site("hh-1", 8.0, 7.0, {})
     assert read_sites(iter(CSV.splitlines()), ["village"])[0][3] == {"village": "Lokoja"}
     assert sites[1][0] == "hh-2"
     assert math.isnan(sites[1][1])
@@ -38,8 +38,23 @@ def test_reads_sites_and_keeps_a_bad_row_in_place() -> None:
 def test_columns_can_be_named_as_a_kobo_export_names_them() -> None:
     lines = ["_uuid,_gps_latitude,_gps_longitude", "u1,8.0,7.0"]
     assert read_sites(iter(lines), (), ("_uuid", "_gps_latitude", "_gps_longitude")) == [
-        ("u1", 8.0, 7.0, {})
+        Site("u1", 8.0, 7.0, {})
     ]
+
+
+def test_a_poor_gps_fix_is_noted() -> None:
+    lines = ["id,lat,lng,acc", "a,8.0,7.0,5", "b,8.0,7.0,350", "c,8.0,7.0,"]
+    sites = read_sites(iter(lines), (), ("id", "lat", "lng"), "acc")
+    assert isinstance(sites, list)
+    assert [s.notes for s in sites] == [(), ("GPS accurate to 350 m, worse than 100 m",), ()]
+    dry = Assessment(8.0, 7.0, NOW, None, None, 1, (), notes=("x",))
+    record = next(records(sites[1:2], [dry], NOW))
+    assert record["notes"] == ["x", "GPS accurate to 350 m, worse than 100 m"]
+    assert next(records(sites[1:2], [FAILED], NOW))["notes"] == [sites[1].notes[0]]
+    assert (
+        read_sites(iter(lines), (), ("id", "lat", "lng"), "hdop")
+        == "the CSV has no column named hdop"
+    )
 
 
 def test_a_csv_without_the_columns_is_refused() -> None:
@@ -50,7 +65,7 @@ def test_a_csv_without_the_columns_is_refused() -> None:
 
 def test_each_site_gets_one_record_with_its_id() -> None:
     dry = Assessment(8.0, 7.0, NOW, None, None, 1, ())
-    sites: list[Site] = [("hh-1", 8.0, 7.0, {"ward": "A"}), ("hh-2", math.nan, 7.0, {})]
+    sites = [Site("hh-1", 8.0, 7.0, {"ward": "A"}), Site("hh-2", math.nan, 7.0, {})]
     first, second = records(sites, [dry, Failure("not a coordinate in Nigeria")], NOW)
     assert (first["id"], first["verdict"], first["lead_hours"]) == ("hh-1", "NONE", None)
     assert first["ward"] == "A"
