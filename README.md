@@ -17,7 +17,7 @@ household, ward and postcode. ng-flood connects the two: it turns a forecast
 into a list of who is inside it, how soon, and how sure we can be.
 
 - **Plain verdicts.** Every site is `FORECAST`, `WATCH`, `NONE` or `UNKNOWN`,
-  and it says `UNKNOWN` rather than guess.
+  judged by the gauges on its own river, and it says `UNKNOWN` rather than guess.
 - **Built for planning.** Check thousands of sites in one run and roll them up
   by postcode area, worst first.
 - **Evidence with every answer.** Each record names the gauge, the forecast,
@@ -65,7 +65,8 @@ uvx ng-flood --sites households.csv --keep lga,ward --evidence kml/ >> triggers.
  "riverine": {"gauge_id": "...", "level": "HIGH", "severity": "SEVERE", "polygon_id": "...",
               "issued": "...", "starts": "...", "ends": "...", "change_m": [0.4, 0.9]},
  "areas": {"<polygon id>": "<sha256 of its KML>"},
- "version": "0.1.0", "cover_km": 50.0, "stale_hours": 48.0, "...": "..."}
+ "version": "0.1.0", "basins": "HydroBASINS v1c level 8", "stale_hours": 48.0,
+ "hazards": ["riverine", "flash"], "...": "..."}
 ```
 
 Each record names the gauge, every forecast area that holds the site with the
@@ -130,16 +131,28 @@ if not isinstance(result, Failure):
 
 | Verdict | Meaning |
 | --- | --- |
-| `FORECAST` | The point is inside a riverine or flash flood forecast area. |
-| `WATCH` | A gauge within 50 km is above normal or worse and publishes no map to test the point against. |
-| `NONE` | A fresh gauge is within 50 km, every area that could reach the point was read, and none holds it. |
-| `UNKNOWN` | No fresh gauge within 50 km, or something nearby was stale, missing or unreadable. |
+| `FORECAST` | The point is inside a riverine inundation map or a flash flood area. |
+| `WATCH` | An elevated gauge on the point's river has no map, or the point is only inside the area Google alerts people in. |
+| `NONE` | A fresh, verified gauge is on the point's river, every area that could reach it was read, and none holds it. |
+| `UNKNOWN` | No fresh, verified gauge is on the point's river, or something on it was stale, missing or unreadable. |
 
-`NONE` is not a promise of safety. It says Google forecasts nothing here now.
-Areas are searched from every gauge within 150 km. Each record carries
-`nearest_gauge_km`; a stale or missing forecast further than 50 km away is
-listed under `notes` and does not change the verdict. The 50 km and 48 hour
-thresholds are provisional until they are checked against live data.
+A gauge is on the point's river when it sits in the point's basin
+([HydroBASINS](https://www.hydrosheds.org/products/hydrobasins) level 8), in any
+basin upstream, or in the basin it drains into, within 150 km. Distance alone
+is not enough: a calm gauge across a watershed says nothing about the point.
+Gauges in Benin, Niger and Cameroon count, so the Benue below Lagdo is covered.
+
+Only gauges that report flooding have areas. Google alerts people in a wide
+area around a gauge; being inside it is a `WATCH`, not a `FORECAST`. A gauge
+Google has not quality-verified can raise `FORECAST` or `WATCH` but cannot make
+`NONE`, and is listed under `notes`.
+
+`NONE` is not a promise of safety. It says Google forecasts no river or flash
+flood here now. Rain in towns, the sea and dam failures are not forecast, and
+each record lists the `hazards` it covers. Stale or missing forecasts on other
+rivers are listed under `notes` and do not change the verdict. The basin rule
+and the 48 hour threshold are provisional until they are checked against
+observed floods.
 
 ## Limits
 
