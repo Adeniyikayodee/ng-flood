@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -410,17 +412,39 @@ def test_an_endpoint_that_keeps_failing_is_left_alone() -> None:
 
     http = httpx.Client(transport=httpx.MockTransport(counted))
     with Client("google", "nipost", http=http) as client:
-        results = client.assess_many([(LAT, LNG)] * 5, NOW)
+        results = client.assess_many([(LAT, LNG)] * 12, NOW)
     assert isinstance(results, list)
     assert sorted({path.rsplit("/", 1)[-1] for path in paths if "Polygons" in path}) == [
         "p0",
         "p1",
         "p2",
     ]
-    assert sum("reverse" in path for path in paths) == 3
+    assert 3 <= sum("reverse" in path for path in paths) <= 6
     last = ok(results[-1])
     assert (last.verdict, last.gaps) == ("UNKNOWN", ("5 forecast areas unavailable",))
     assert last.notes == ("postcode lookup stopped after 3 failures",)
+
+
+def test_postcodes_are_looked_up_four_at_a_time() -> None:
+    busy, most, lock = [0], [0], threading.Lock()
+
+    def slow(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.postcode.gov.ng":
+            with lock:
+                busy[0] += 1
+                most[0] = max(most[0], busy[0])
+            time.sleep(0.05)
+            with lock:
+                busy[0] -= 1
+        return server([STATUS])(request)
+
+    with Client(
+        "google", "nipost", http=httpx.Client(transport=httpx.MockTransport(slow))
+    ) as client:
+        results = client.assess_many([(LAT, LNG)] * 8, NOW)
+    assert isinstance(results, list)
+    assert all(ok(r).area == "KG-05-A12-FK" for r in results)
+    assert most[0] == 4
 
 
 def test_evidence_is_saved_once_or_the_run_fails(

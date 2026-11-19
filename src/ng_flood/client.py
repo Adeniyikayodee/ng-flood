@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from importlib.resources import files
 from math import isfinite
 from pathlib import Path
+from threading import Lock
 from time import sleep
 from typing import Any
 from urllib.parse import quote
@@ -34,6 +36,8 @@ MAX_WAIT = 30.0
 STRIKES = 3
 """Failures in a row before an endpoint is left alone for the rest of the run."""
 REVERSE_M = 250.0
+LOOKUPS = 4
+"""Postcode lookups in flight at once."""
 _NIGERIA = parse_kml(files("ng_flood").joinpath("nigeria.kml").read_text()) or ()
 """The border, about 10 km generous so border and coastal sites pass."""
 
@@ -84,6 +88,7 @@ class Client:
         self._headers = {"X-Goog-Api-Key": google_key}
         self._nipost = Nipost(nipost_key, http=self._http) if nipost_key else None
         self._strikes: Counter[str] = Counter()
+        self._lock = Lock()
 
     def assess(self, lat: float, lng: float, now: datetime | None = None) -> Assessment | Failure:
         results = self.assess_many([(lat, lng)], now)
@@ -143,10 +148,12 @@ class Client:
         basins = self._basins or bundled()
         places = self._lgas or lgas()
         homes = {s: basins.at(s.lat, s.lng) for s in forecasts.statuses}
+        with ThreadPoolExecutor(LOOKUPS) as pool:
+            labels = list(pool.map(lambda i: self._label(*points[i]), inside))
         polygons: dict[str, tuple[Polygon, ...] | None] = {}
         digests: dict[str, str] = {}
         saved: set[str] = set()
-        for i in inside:
+        for i, (postcode, area, why) in zip(inside, labels, strict=True):
             lat, lng = points[i]
             reach = basins.reach(basins.at(lat, lng))
             cover = frozenset(s for s, home in homes.items() if home in reach)
@@ -158,7 +165,6 @@ class Client:
                     text = source.kml.get(pid) or ""
                     polygons[pid] = parse_kml(text)
                     digests[pid] = sha256(text.encode()).hexdigest()
-            postcode, area, why = self._label(lat, lng)
             result = assess(lat, lng, selection, polygons, forecasts.gaps, digests)
             lga = places.at(lat, lng)
             results[i] = replace(
@@ -217,7 +223,8 @@ class Client:
         return None if isinstance(raw, Failure) else google.kml(raw)
 
     def _strike(self, endpoint: str, failed: bool) -> None:
-        self._strikes[endpoint] = self._strikes[endpoint] + 1 if failed else 0
+        with self._lock:
+            self._strikes[endpoint] = self._strikes[endpoint] + 1 if failed else 0
 
     def _call(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any | Failure:
         for wait in (*WAITS, None):
