@@ -42,6 +42,12 @@ def test_columns_can_be_named_as_a_kobo_export_names_them() -> None:
     ]
 
 
+def test_a_csv_that_repeats_an_id_is_refused() -> None:
+    lines = ["id,lat,lng", "a,8,7", "b,8,7", "a,8,7", ",8,7", ",8,7"]
+    assert read_sites(iter(lines)) == "the CSV repeats id a: records could not be told apart"
+    assert isinstance(read_sites(iter(lines[:3] + lines[4:])), list)
+
+
 def test_a_poor_gps_fix_is_noted() -> None:
     lines = ["id,lat,lng,acc", "a,8.0,7.0,5", "b,8.0,7.0,350", "c,8.0,7.0,"]
     sites = read_sites(iter(lines), (), ("id", "lat", "lng"), "acc")

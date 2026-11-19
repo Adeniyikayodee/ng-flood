@@ -242,7 +242,7 @@ def read_sites(
     if lacks := wanted - set(reader.fieldnames or ()):
         return f"the CSV has no column named {' or '.join(sorted(lacks))}"
     sid, lat, lng = columns
-    return [
+    sites = [
         Site(
             row[sid],
             _number(row[lat]),
@@ -252,6 +252,9 @@ def read_sites(
         )
         for row in reader
     ]
+    if repeats := [i for i, n in Counter(s.id for s in sites).items() if i and n > 1]:
+        return f"the CSV repeats id {', '.join(repeats[:3])}: records could not be told apart"
+    return sites
 
 
 def records(
