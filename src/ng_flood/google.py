@@ -38,6 +38,10 @@ class Status:
     """The window the forecast predicts for."""
     change_m: tuple[float, float] | None = None
     """Lowest and highest expected change in level, in metres."""
+    verified: bool = False
+    """Google's qualityVerified: no model, or a model checked against observations."""
+    source: str | None = None
+    """Who supplies the gauge's data, such as GRDC."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +116,8 @@ def _status(raw: Any) -> Status | None:
         starts=_time(window.get("start")),
         ends=_time(window.get("end")),
         change_m=None if low is None or high is None else (low, high),
+        verified=raw.get("qualityVerified") is True,
+        source=_text(raw, "source"),
     )
 
 

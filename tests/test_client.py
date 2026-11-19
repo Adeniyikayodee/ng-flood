@@ -24,6 +24,8 @@ STATUS: dict[str, Any] = {
     "issuedTime": ISSUED,
     "severity": "SEVERE",
     "forecastTrend": "RISE",
+    "qualityVerified": True,
+    "source": "GRDC",
     "inundationMapSet": {
         "inundationMapType": "PROBABILITY",
         "inundationMaps": [
@@ -99,7 +101,7 @@ def test_an_alert_area_is_a_watch_not_a_forecast() -> None:
     status = STATUS | {"inundationMapSet": maps, "serializedNotificationPolygonId": "here"}
     found = ok(run(server([status])))
     assert (found.verdict, found.riverine) == ("WATCH", None)
-    assert found.watch == Watch("g1", "SEVERE", 15.6, "here")
+    assert found.watch == Watch("g1", "SEVERE", 15.6, "here", verified=True)
     assert found.areas == {"here": sha256(KML["here"].encode()).hexdigest()}
     assert "its alert area holds the point" in render(found)
     gone = ok(run(server([status], broken=("serializedPolygons/here",))))
@@ -157,7 +159,7 @@ def test_a_missing_polygon_is_a_gap_not_dry_land() -> None:
 def test_an_elevated_gauge_without_a_map_is_a_watch() -> None:
     found = ok(run(server([STATUS | {"inundationMapSet": {}}, DRY])))
     assert found.verdict == "WATCH"
-    assert found.watch == Watch("g1", "SEVERE", 15.6)
+    assert found.watch == Watch("g1", "SEVERE", 15.6, verified=True)
     assert "g1 is SEVERE 15.6 km away and has no map" in render(found)
     assert found.as_dict()["watch"]["severity"] == "SEVERE"
     assert ok(run(server([STATUS]), lat=9.5)).watch is None
@@ -167,6 +169,15 @@ def test_an_unreadable_status_is_a_gap() -> None:
     found = ok(run(server([DRY, {"gaugeId": "no-location"}])))
     assert found.verdict == "UNKNOWN"
     assert found.gaps == ("1 riverine forecast unreadable",)
+
+
+def test_a_gauge_is_unverified_unless_google_says_so() -> None:
+    found = ok(run(server([STATUS]))).riverine
+    assert found is not None
+    assert (found.verified, found.source) == (True, "GRDC")
+    page = google.statuses({"floodStatuses": [STATUS | {"qualityVerified": "true"}]})
+    assert page is not None
+    assert page.items[0].verified is False
 
 
 def test_a_number_that_is_not_finite_is_unreadable() -> None:

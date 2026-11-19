@@ -65,6 +65,8 @@ class Riverine:
     starts: datetime | None
     ends: datetime | None
     change_m: tuple[float, float] | None
+    verified: bool = False
+    source: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +78,7 @@ class Watch:
     severity: str
     km: float
     alert_area: str | None = None
+    verified: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +176,8 @@ def assess(
             s.starts,
             s.ends,
             s.change_m,
+            s.verified,
+            s.source,
         )
         for s in selection.statuses
         for level, pid in _areas(s)
@@ -218,7 +223,13 @@ def assess(
             *some(len(missing) - far, "forecast area", "unavailable"),
         ),
         watch=(
-            Watch(risen.gauge_id, risen.severity, round(km(risen), 1), alerts.get(risen.gauge_id))
+            Watch(
+                risen.gauge_id,
+                risen.severity,
+                round(km(risen), 1),
+                alerts.get(risen.gauge_id),
+                risen.verified,
+            )
             if risen
             else None
         ),
