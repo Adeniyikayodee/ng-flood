@@ -19,6 +19,7 @@ from ng_postcode import api as nipost
 from ng_postcode.client import Client as Nipost
 
 from . import google
+from .areas import Areas, Lga, lgas
 from .assess import Assessment, area_ids, assess, select
 from .basins import Basins, bundled
 from .geometry import Polygon, contains, parse_kml
@@ -73,9 +74,11 @@ class Client:
         http: httpx.Client | None = None,
         evidence: Path | None = None,
         basins: Basins | None = None,
+        areas: Areas[Lga] | None = None,
     ) -> None:
         self._evidence = evidence
         self._basins = basins
+        self._lgas = areas
         self._http = http if http is not None else httpx.Client(timeout=TIMEOUT)
         self._owns_http = http is None
         self._headers = {"X-Goog-Api-Key": google_key}
@@ -133,6 +136,7 @@ class Client:
         now = now or datetime.now(UTC)
         digest = source.digest() if snapshot and snapshot.complete else None
         basins = self._basins or bundled()
+        places = self._lgas or lgas()
         homes = {s: basins.at(s.lat, s.lng) for s in forecasts.statuses}
         polygons: dict[str, tuple[Polygon, ...] | None] = {}
         digests: dict[str, str] = {}
@@ -151,8 +155,16 @@ class Client:
                     digests[pid] = sha256(text.encode()).hexdigest()
             postcode, area, why = self._label(lat, lng)
             result = assess(lat, lng, selection, polygons, forecasts.gaps, digests)
+            lga = places.at(lat, lng)
             results[i] = replace(
-                result, postcode=postcode, area=area, notes=result.notes + why, snapshot=digest
+                result,
+                postcode=postcode,
+                area=area,
+                state=lga.state if lga else None,
+                lga=lga.name if lga else None,
+                lga_pcode=lga.pcode if lga else None,
+                notes=result.notes + why,
+                snapshot=digest,
             )
             if self._evidence:
                 try:

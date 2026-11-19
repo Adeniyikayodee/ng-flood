@@ -104,6 +104,11 @@ class Assessment:
     """What stops a NONE: anything stale, missing or unreadable that could reach the point."""
     postcode: str | None = None
     area: str | None = None
+    """The NIPOST postcode area."""
+    state: str | None = None
+    lga: str | None = None
+    lga_pcode: str | None = None
+    """OCHA's P-code for the LGA, to join with humanitarian data."""
     watch: Watch | None = None
     nearest_gauge_km: float | None = None
     notes: tuple[str, ...] = ()

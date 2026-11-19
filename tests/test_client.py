@@ -85,6 +85,9 @@ def test_reports_the_highest_area_that_holds_the_point() -> None:
     assert found.riverine is not None
     assert (found.riverine.level, found.riverine.severity) == ("LOW", "SEVERE")
     assert (found.area, found.postcode) == ("KG-05-A12-FK", "KG-05-A12-FK-01")
+    assert (found.state, found.lga, found.lga_pcode) == ("Kogi", "Lokoja", "NG023012")
+    assert "LGA:      Lokoja, Kogi" in render(found)
+    assert ok(run(server([STATUS]), lat=9.5)).lga is None
     assert found.gaps == ()
     assert "KG-05-A12-FK" in render(found)
     assert "not town rain" in render(found)

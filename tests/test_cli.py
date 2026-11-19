@@ -43,10 +43,10 @@ def test_a_csv_without_the_columns_is_refused() -> None:
 
 def test_each_site_gets_one_record_with_its_id() -> None:
     dry = Assessment(8.0, 7.0, NOW, None, None, 1, ())
-    sites: list[Site] = [("hh-1", 8.0, 7.0, {"lga": "Lokoja"}), ("hh-2", math.nan, 7.0, {})]
+    sites: list[Site] = [("hh-1", 8.0, 7.0, {"ward": "A"}), ("hh-2", math.nan, 7.0, {})]
     first, second = records(sites, [dry, Failure("not a coordinate in Nigeria")], NOW)
     assert (first["id"], first["verdict"], first["lead_hours"]) == ("hh-1", "NONE", None)
-    assert first["lga"] == "Lokoja"
+    assert first["ward"] == "A"
     assert set(dry.as_dict()) == FIELDS
     assert second == {"id": "hh-2", "error": "not a coordinate in Nigeria", "checked": STAMP}
 
