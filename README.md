@@ -53,12 +53,6 @@ Lead:     48 h until the forecast window opens
 Coordinates go latitude first. Check the LGA line: if it names the wrong
 place, the numbers are probably swapped. Add `--json` for machine output.
 
-Until the first release is on PyPI, run it from GitHub instead:
-
-```sh
-uvx --from git+https://github.com/Adeniyikayodee/ng-flood ng-flood 7.8023 6.7333
-```
-
 ## Check many places
 
 Put them in a CSV with `id`, `lat` and `lng` columns. The forecasts download
