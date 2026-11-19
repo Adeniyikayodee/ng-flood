@@ -1,141 +1,189 @@
 # ng-flood
 
-**Know which communities a flood will reach, before it arrives.**
+**See which places a flood will reach, before it gets there.**
 
-ng-flood checks any point in Nigeria against Google's flood forecasts and names
-its state and LGA. One coordinate, or a whole list of households, becomes a
-clear verdict, a lead time, and a record you can audit later.
+Google forecasts river floods in Nigeria days ahead. But those forecasts are
+drawn around river stations and map shapes, not around homes, wards and LGAs.
+ng-flood joins the two. Give it a place, or a list of thousands, and it tells
+you if a flood is forecast there, how soon, and how sure it can be.
 
 A research project by the
 [Geohazards Risk Mapping Initiative](https://www.georiskmap.org/about) (GRMI).
 
----
+![ng-flood checking one coordinate with its lead time, a CSV of four sites with one for each verdict, then 240 households rolled up by area](docs/demo.gif)
 
-Floods in Nigeria can be forecast days ahead, but the forecasts are drawn as river
-gauges and map polygons, not as the places people live. Responders work by
-household, ward and LGA. ng-flood connects the two: it turns a forecast
-into a list of who is inside it, how soon, and how sure we can be.
+## The answer
 
-- **Plain verdicts.** Every site is `FORECAST`, `WATCH`, `NONE` or `UNKNOWN`,
-  judged by the gauges on its own river, and it says `UNKNOWN` rather than guess.
-- **Built for planning.** Check thousands of sites in one run and roll them up
-  by LGA, state, ward or postcode area, worst first.
-- **Evidence with every answer.** Each record names the gauge, the forecast,
-  and the exact map it was judged against.
-- **Private by default.** Forecasts are downloaded and compared on your machine.
-  Site locations stay there.
+Every place gets one of four answers.
 
-![ng-flood checking one coordinate with its lead time, a CSV of four sites with one for each verdict, then 240 households rolled up by postcode area](docs/demo.gif)
+| Answer | What it means |
+| --- | --- |
+| `FORECAST` | A flood map covers this place. |
+| `WATCH` | A river station nearby is rising, but there is no map to check this exact place. |
+| `NONE` | The stations on this river are calm, and no flood map covers this place. |
+| `UNKNOWN` | There is not enough fresh, trusted data to say. |
 
-The recording shows the real program on sample data.
+When ng-flood is not sure, it says `UNKNOWN`. It never guesses `NONE`.
 
-## How it works
+`NONE` does not mean safe. It means Google forecasts no river or flash flood
+here right now. Rain flooding in towns, the sea, and dam failures are not part
+of the forecast.
 
-![A coordinate flows through NIPOST and Google's riverine and flash flood forecasts to one of four verdicts, FORECAST, WATCH, NONE or UNKNOWN, then rolls up into one row for each postcode area](docs/flow.gif)
+## Try it
 
-## Use it
-
-Nothing to install: [uv](https://docs.astral.sh/uv/) fetches and runs it.
+You need [uv](https://docs.astral.sh/uv/) and a Google key (see [Keys](#keys)).
 
 ```sh
-export GOOGLE_FLOOD_API_KEY=...   # required
-export NG_POSTCODE_API_KEY=...    # only for --postcode
-uvx ng-flood 7.8023 6.7333        # add --json for machine output
+export GOOGLE_FLOOD_API_KEY=...
+uvx ng-flood 7.8023 6.7333
 ```
 
-Until the first release is on PyPI, run it from the repository:
+```
+Verdict:  FORECAST
+Point:    lat 7.8023, lng 6.7333
+LGA:      Lokoja, Kogi
+Area:     postcode not resolved
+Riverine: inside HIGH area of gauge ..., SEVERE, trend RISE
+Lead:     48 h until the forecast window opens
+...
+```
+
+Coordinates go latitude first. Check the LGA line: if it names the wrong
+place, the numbers are probably swapped. Add `--json` for machine output.
+
+Until the first release is on PyPI, run it from GitHub instead:
 
 ```sh
 uvx --from git+https://github.com/Adeniyikayodee/ng-flood ng-flood 7.8023 6.7333
 ```
 
-The same `git+` address works with `pip install` and in the MCP config below.
+## Check many places
 
-For many sites, give a CSV with `id`, `lat` and `lng` columns. The forecasts
-are downloaded once and each row becomes one JSON record, ready to append to a
-log:
+Put them in a CSV with `id`, `lat` and `lng` columns. The forecasts download
+once, and each row becomes one line of JSON.
 
 ```sh
-uvx ng-flood --sites households.csv --keep ward --evidence kml/ >> triggers.jsonl
+uvx ng-flood --sites households.csv >> results.jsonl
 ```
 
 ```json
-{"id": "hh-0142", "ward": "A", "state": "Kogi", "lga": "Lokoja", "lga_pcode": "NG023012",
- "verdict": "FORECAST", "lead_hours": 48.0,
- "checked": "2026-10-04T12:00:00+00:00", "nearest_gauge_km": 15.6,
- "riverine": {"gauge_id": "...", "level": "HIGH", "severity": "SEVERE", "polygon_id": "...",
-              "issued": "...", "starts": "...", "ends": "...", "change_m": [0.4, 0.9]},
- "areas": {"<polygon id>": "<sha256 of its KML>"},
- "version": "0.1.0", "basins": "HydroBASINS v1c level 8", "stale_hours": 48.0,
- "hazards": ["riverine", "flash"], "...": "..."}
+{"id": "hh-0142", "state": "Kogi", "lga": "Lokoja", "verdict": "FORECAST", "lead_hours": 48.0, "...": "..."}
 ```
 
-Each record names the gauge, every forecast area that holds the site with the
-hash of its KML, when Google issued the forecast, when it was checked, and the
-version and thresholds that judged it, so a decision made on it can be audited
-later. `--evidence` saves that KML, named by its hash. `lead_hours` is the time
-until the riverine forecast window opens.
+### Roll up by area
 
-Every record names its state and LGA, with OCHA's P-code to join humanitarian
-data, and `--keep` copies other CSV columns such as `ward`. A count by LGA is
-one line:
+To plan by LGA, add `--by lga`. You get one line per LGA, worst first.
 
 ```sh
-jq -r '[.lga, .verdict] | @tsv' triggers.jsonl | sort | uniq -c
-```
-
-For a plan by LGA, add `--by lga`. Each line is then one LGA, worst first, and
-`--records` keeps the site records behind it:
-
-```sh
-uvx ng-flood --sites households.csv --by lga --records triggers.jsonl
+uvx ng-flood --sites households.csv --by lga
 ```
 
 ```json
 {"area": "NG023012", "state": "Kogi", "lga": "Lokoja", "sites": 12, "verdict": "FORECAST",
- "FORECAST": 3, "WATCH": 0, "UNKNOWN": 1, "NONE": 8, "errors": 0, "lead_hours": 36.0, "...": "..."}
+ "FORECAST": 3, "WATCH": 0, "UNKNOWN": 1, "NONE": 8, "errors": 0, "lead_hours": 36.0}
 ```
 
-`--by state` works the same way. The boundaries ship with ng-flood, so neither
-sends a site anywhere. For wards or communities, bring your own polygons, such
-as GRID3's ward boundaries, and roll up by one of their properties:
+An area gets the worst answer among its places. `UNKNOWN` counts as worse than
+`NONE`, so one blind spot stops an area looking clear. Every place is counted
+somewhere, so the rows always add up to your CSV.
+
+| Flag | Rolls up by |
+| --- | --- |
+| `--by lga` | LGA, keyed by OCHA's P-code |
+| `--by state` | State |
+| `--areas wards.geojson --by wardname` | Any shapes you bring, such as GRID3 wards |
+| `--by postcode` | NIPOST postcode area (sends each place to NIPOST) |
+
+Add `--records FILE` to keep the line for each place as well.
+
+### Data from KoBoToolbox or ODK
+
+Name the columns your export uses. Give a GPS accuracy column, and any place
+with a fix worse than 100 m gets a note.
 
 ```sh
-uvx ng-flood --sites households.csv --areas wards.geojson --by wardname
+uvx ng-flood --sites export.csv --id-col _uuid \
+  --lat-col _gps_latitude --lng-col _gps_longitude --accuracy-col _gps_precision
 ```
 
-`--by postcode` rolls up by NIPOST postcode area, and sends each site to NIPOST.
+`--keep ward,village` copies other columns into each line. Each `id` must be
+unique. A row that cannot be read gets an `error`, and the rest carry on.
 
-An area takes the worst verdict among its sites, and `UNKNOWN` outranks `NONE`,
-so one blind site stops an area reading as clear. `lead_hours` is the shortest
-among them. Sites with no area share a row whose `area` is `null`, and failed
-sites are counted in `errors`, so the rows always add up to the CSV.
+## Work offline
 
-A row that cannot be read gets an `error` and does not stop the rest. If Google
-cannot be reached, every site still gets an `error` record with the time, so a
-failed run leaves a trace. The exit code is 1 when no site could be assessed.
-
-To work offline, or to share one download with a team, save the forecasts
-first. A snapshot holds every forecast for Nigeria and every area they name:
+Download the forecasts once, then check places with no internet and no key.
 
 ```sh
 uvx ng-flood --fetch today.json.gz
-uvx ng-flood --sites households.csv --snapshot today.json.gz   # no Google key needed
+uvx ng-flood --sites households.csv --snapshot today.json.gz
 ```
 
-A record judged from a snapshot carries `snapshot`, the SHA-256 of its JSON.
-With that file and the record's `checked` time, the verdict replays exactly:
+Freshness is judged at the time you run it, so an old download gives
+`UNKNOWN`, never a false all-clear.
+
+## Check a past answer
+
+Every line records the station, the forecast, when Google issued it, when it
+was checked, and the rules that judged it. An answer from a download also
+carries `snapshot`, a fingerprint of that file. To replay it exactly:
 
 ```sh
 uvx ng-flood 7.8023 6.7333 --snapshot today.json.gz --at 2026-10-04T12:00:00+00:00
 ```
 
-Freshness is judged at the time of the run unless `--at` says otherwise, so an
-old snapshot reads as `UNKNOWN`, never as clear. Google serves only the latest
-forecast, so the repository keeps one snapshot a day on its `archive` branch.
+`--evidence kml/` also saves every flood map that covered a place.
 
-From an AI assistant, as an MCP server with one tool, `check_flood_forecast`.
-It downloads the forecasts at most once every ten minutes:
+Google only serves today's forecast. So this repository saves one download a
+day on its `archive` branch, to check answers against the floods that follow.
+
+## How an answer is made
+
+![A coordinate flows through Google's riverine and flash flood forecasts to one of four verdicts, FORECAST, WATCH, NONE or UNKNOWN, then rolls up into one row for each area](docs/flow.gif)
+
+Google measures rivers at **gauges**: real stations, and model points along
+the river. When a gauge forecasts a flood, it can publish a **flood map**, a
+shape showing where the water may reach.
+
+A gauge only speaks for a place on its own river. ng-flood uses **river
+basins**, the patch of land that drains into each stretch of river. A gauge
+counts for a place when it sits:
+
+- in the same basin,
+- in any basin upstream, or
+- in the next basin downstream,
+
+and within 150 km. A calm gauge over a hill, on another river, counts for
+nothing. Gauges in Benin, Niger and Cameroon count too, because their rivers
+flow into Nigeria.
+
+Then:
+
+- Inside a flood map: `FORECAST`.
+- Inside the wider area where Google sends phone alerts, but not a map:
+  `WATCH`.
+- A rising gauge on the river with no map: `WATCH`.
+- A fresh, calm, verified gauge on the river, and every map read: `NONE`.
+- Anything else: `UNKNOWN`.
+
+A forecast older than 48 hours is stale. Google marks some gauges as not yet
+checked against real measurements. Those can raise an alarm, but never give
+`NONE`. The 150 km, 48 hour and basin rules are a first guess, to be tested
+against real floods.
+
+## From code or an AI assistant
+
+From Python:
+
+```python
+from ng_flood import Client, Failure
+
+with Client(google_key) as client:
+    result = client.assess(7.8023, 6.7333)
+if not isinstance(result, Failure):
+    print(result.verdict, result.lga, result.gaps)
+```
+
+As an MCP server, with one tool, `check_flood_forecast`:
 
 ```json
 {
@@ -143,79 +191,41 @@ It downloads the forecasts at most once every ten minutes:
     "ng-flood": {
       "command": "uvx",
       "args": ["--from", "ng-flood[mcp]", "ng-flood-mcp"],
-      "env": { "GOOGLE_FLOOD_API_KEY": "...", "NG_POSTCODE_API_KEY": "..." }
+      "env": { "GOOGLE_FLOOD_API_KEY": "..." }
     }
   }
 }
 ```
 
-From Python, after `pip install ng-flood`:
+## Privacy
 
-```python
-from ng_flood import Client, Failure
-
-with Client(google_key, nipost_key) as client:
-    result = client.assess(7.8023, 6.7333)
-if not isinstance(result, Failure):
-    print(result.verdict, result.area, result.gaps)
-```
-
-## What the verdict means
-
-| Verdict | Meaning |
-| --- | --- |
-| `FORECAST` | The point is inside a riverine inundation map or a flash flood area. |
-| `WATCH` | An elevated gauge on the point's river has no map, or the point is only inside the area Google alerts people in. |
-| `NONE` | A fresh, verified gauge is on the point's river, every area that could reach it was read, and none holds it. |
-| `UNKNOWN` | No fresh, verified gauge is on the point's river, or something on it was stale, missing or unreadable. |
-
-A gauge is on the point's river when it sits in the point's basin
-([HydroBASINS](https://www.hydrosheds.org/products/hydrobasins) level 8), in any
-basin upstream, or in the basin it drains into, within 150 km. Distance alone
-is not enough: a calm gauge across a watershed says nothing about the point.
-Gauges in Benin, Niger and Cameroon count, so the Benue below Lagdo is covered.
-
-Only gauges that report flooding have areas. Google alerts people in a wide
-area around a gauge; being inside it is a `WATCH`, not a `FORECAST`. A gauge
-Google has not quality-verified can raise `FORECAST` or `WATCH` but cannot make
-`NONE`, and is listed under `notes`.
-
-`NONE` is not a promise of safety. It says Google forecasts no river or flash
-flood here now. Rain in towns, the sea and dam failures are not forecast, and
-each record lists the `hazards` it covers. Stale or missing forecasts on other
-rivers are listed under `notes` and do not change the verdict. The basin rule
-and the 48 hour threshold are provisional until they are checked against
-observed floods.
+Forecasts are downloaded whole and checked on your machine. Your places never
+leave it, unless you ask for postcodes with `--postcode` or `--by postcode`, or
+give a NIPOST key to the library or MCP server. Keep names out of the `id`
+column.
 
 ## Limits
 
-- Input is a coordinate. NIPOST does not return a coordinate for a postcode
-  below its restricted lookup level, so a typed postcode cannot be checked.
-- The LGA and postcode are labels, not verification. LGA lines are simplified
-  to about 500 m, so a site on a boundary may land in its neighbour. Flash flood
-  cells are about 20 km, so the result is reported by area, not by building.
-- A coordinate must fall inside Nigeria's border, drawn about 10 km generous.
-- Nothing from NIPOST or Google is stored, unless you pass `--evidence` or
-  `--fetch`. The MCP server keeps the forecasts in memory for ten minutes.
-- No site location leaves your machine by default: Google's forecasts are
-  downloaded whole and compared locally. Only `--postcode`, `--by postcode`, or
-  a NIPOST key given to the library or the MCP server, sends each coordinate to
-  NIPOST.
-  Keep names out of the `id` column.
-- A 429, a 5xx or a network error is retried twice before it counts as a gap.
-  After three failures in a row, forecast areas or postcodes are not asked for
-  again in that run. A missing postcode is explained under `notes`.
-- If `--evidence` cannot be saved, the run fails and every site gets an `error`.
-- The decoders follow Google's published schema. They have not yet been run
-  against live responses: the API is behind a
+- It checks coordinates, not typed addresses or postcodes.
+- LGA lines are simplified to about 500 m, so a place on a border may land in
+  the next LGA. Flash flood cells are about 20 km wide.
+- A coordinate must be inside Nigeria's border, drawn about 10 km outside the
+  real line so places on the edge still count.
+- A busy or failed request is tried three times. After three failures in a row,
+  ng-flood stops asking that service for the rest of the run.
+- If Google cannot be reached, every place still gets a line with the error and
+  the time. The exit code is 1 when no place could be checked.
+- The decoders follow Google's published format but have not met a live
+  response yet. The API is behind a
   [waitlist](https://developers.google.com/flood-forecasting).
 
 ## Keys
 
-- Google: join the waitlist, then enable the Flood Forecasting API on your
-  Cloud project and create an API key.
-- NIPOST, only for `--postcode`: a free level 1 key from the
-  [developer dashboard](https://dashboard.postcode.gov.ng).
+- **Google:** join the waitlist, enable the Flood Forecasting API on your Cloud
+  project, and create an API key.
+- **NIPOST**, only for postcodes: a free level 1 key from the
+  [developer dashboard](https://dashboard.postcode.gov.ng). Set it as
+  `NG_POSTCODE_API_KEY`.
 
 ## Develop
 
@@ -223,22 +233,27 @@ observed floods.
 uv run --group dev ruff check . && uv run --group dev mypy && uv run --group dev pytest
 ```
 
+`scripts/basins.py` and `scripts/areas.py` rebuild the bundled basins and LGAs.
+
 ## Research
 
-ng-flood is part of the research of the
-[Geohazards Risk Mapping Initiative](https://www.georiskmap.org/about), which
-develops and shares flood risk maps for communities in Nigeria using geospatial
-technology. It studies one question: can a global flood forecast be turned into
-an early warning that a local responder can act on, place by place?
+ng-flood is part of GRMI's research. GRMI makes and shares flood risk maps for
+communities in Nigeria. This project asks one question: can a global flood
+forecast become a warning a local responder can act on, place by place?
 
-It is research software. Its thresholds are provisional and its verdicts have
-not yet been validated against observed floods. Findings, issues and data from
-the field are welcome.
+It is research software. Its rules have not yet been tested against real
+floods. [docs/validation.md](docs/validation.md) says how they will be.
+Findings, issues and field data are welcome.
 
-## Attribution
+## Credits
 
-Flood forecasts are from Google Flood Forecasting, licensed CC BY 4.0. Postcodes
-are from NIPOST. This project is not affiliated with either, and is not an
-official warning: follow NEMA and NIHSA.
+- Flood forecasts: Google Flood Forecasting, CC BY 4.0.
+- River basins: HydroBASINS v1c, HydroSHEDS License. Lehner and Grill (2013),
+  Hydrological Processes 27(15).
+- States and LGAs: OCHA COD-AB Nigeria, CC BY-IGO.
+- Postcodes: NIPOST.
+
+ng-flood is not linked to any of them, and it is not an official warning.
+Follow NEMA and NIHSA.
 
 MIT licensed.
