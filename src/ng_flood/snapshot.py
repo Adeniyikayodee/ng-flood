@@ -21,8 +21,8 @@ FORMAT = 1
 @dataclass(slots=True)
 class Snapshot:
     fetched: datetime
-    statuses: list[Any]
-    """Raw pages of riverine forecasts."""
+    statuses: dict[str, list[Any] | str]
+    """Raw pages of riverine forecasts by region, or why a region has none."""
     flashes: list[Any] | str
     """Raw pages of flash flood forecasts, or why there are none."""
     kml: dict[str, str | None] = field(default_factory=dict)
@@ -55,7 +55,9 @@ class Snapshot:
         if (
             data.get("format") != FORMAT
             or fetched.tzinfo is None
-            or not isinstance(statuses, list)
+            or not isinstance(statuses, dict)
+            or not isinstance(statuses.get(google.REGIONS[0]), list)
+            or not all(isinstance(v, list | str) for v in statuses.values())
             or not isinstance(flashes, list | str)
             or not isinstance(kml, dict)
             or not all(isinstance(v, str | None) for v in kml.values())
@@ -74,13 +76,19 @@ class Forecasts:
 
 def read(snapshot: Snapshot) -> Forecasts | None:
     """Decode a snapshot. None when a page is not what Google sends."""
-    statuses = _items(snapshot.statuses, google.statuses)
+    pages = [page for p in snapshot.statuses.values() if isinstance(p, list) for page in p]
+    statuses = _items(pages, google.statuses)
     flashes = (
         ((), 0) if isinstance(snapshot.flashes, str) else _items(snapshot.flashes, google.flashes)
     )
     if statuses is None or flashes is None:
         return None
     gaps = some(statuses[1], "riverine forecast", "unreadable")
+    gaps += [
+        f"riverine forecasts for {r} unavailable: {why}"
+        for r, why in snapshot.statuses.items()
+        if isinstance(why, str)
+    ]
     if isinstance(snapshot.flashes, str):
         gaps.append(f"flash floods unavailable: {snapshot.flashes}")
     gaps += some(flashes[1], "flash forecast", "unreadable")

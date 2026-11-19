@@ -87,9 +87,12 @@ class Client:
         """Download Nigeria's forecasts; with `whole`, every area they name as well."""
         self._strikes.clear()
         fetched = now or datetime.now(UTC)
-        statuses = self._pages(google.STATUS_PATH, {"regionCode": "NG"}, google.statuses)
-        if isinstance(statuses, Failure):
-            return statuses
+        statuses: dict[str, list[Any] | str] = {}
+        for region in google.REGIONS:
+            pages = self._pages(google.STATUS_PATH, {"regionCode": region}, google.statuses)
+            if isinstance(pages, Failure) and region == google.REGIONS[0]:
+                return pages
+            statuses[region] = str(pages) if isinstance(pages, Failure) else pages
         flashes = self._pages(google.FLASH_PATH, {"countryCodes": ["NG"]}, google.flashes)
         snapshot = Snapshot(
             fetched, statuses, str(flashes) if isinstance(flashes, Failure) else flashes

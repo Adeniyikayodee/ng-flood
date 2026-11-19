@@ -46,7 +46,7 @@ async def test_one_download_serves_calls_for_ten_minutes(monkeypatch: pytest.Mon
     async with mcp(counted) as client:
         for clock[0] in (0.0, 599.0, 601.0):
             await client.call_tool("check_flood_forecast", {"latitude": LAT, "longitude": LNG})
-    assert sum("floodStatus" in path for path in paths) == 2
+    assert sum("floodStatus" in path for path in paths) == 2 * 4
     assert sum("serializedPolygons" in path for path in paths) == 4
 
 

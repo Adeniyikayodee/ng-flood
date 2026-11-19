@@ -59,8 +59,10 @@ def test_a_snapshot_without_an_area_is_a_gap_not_a_call() -> None:
         '{"format": 1, "fetched": "2026-10-04T12:00:00", "statuses": [], "flashes": [], "kml": {}}',
         '{"format": 1, "fetched": "2026-10-04T12:00:00Z", "statuses": {}, "flashes": [], '
         '"kml": {}}',
-        '{"format": 1, "fetched": "2026-10-04T12:00:00Z", "statuses": [], "flashes": [], '
+        '{"format": 1, "fetched": "2026-10-04T12:00:00Z", "statuses": {"NG": []}, "flashes": [], '
         '"kml": {"a": 1}}',
+        '{"format": 1, "fetched": "2026-10-04T12:00:00Z", "statuses": {"NG": "down"}, '
+        '"flashes": [], "kml": {}}',
     ],
 )
 def test_a_file_that_is_not_a_snapshot_is_refused(text: str) -> None:
@@ -68,6 +70,6 @@ def test_a_file_that_is_not_a_snapshot_is_refused(text: str) -> None:
 
 
 def test_a_snapshot_with_a_bad_page_fails_the_batch() -> None:
-    snapshot = Snapshot(NOW, [{"floodStatuses": "x"}], [])
+    snapshot = Snapshot(NOW, {"NG": [{"floodStatuses": "x"}]}, [])
     with client(never) as offline:
         assert str(offline.assess_many([(LAT, LNG)], NOW, snapshot)).startswith("the snapshot")

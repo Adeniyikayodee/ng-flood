@@ -17,6 +17,8 @@ BASE_URL = "https://floodforecasting.googleapis.com"
 STATUS_PATH = "/v1/floodStatus:searchLatestFloodStatusByArea"
 FLASH_PATH = "/v1/flashFloods:search"
 POLYGON_PATH = "/v1/serializedPolygons/"
+REGIONS = ("NG", "BJ", "NE", "CM")
+"""Nigeria, then the neighbours whose rivers flow into it."""
 
 
 @dataclass(frozen=True, slots=True)

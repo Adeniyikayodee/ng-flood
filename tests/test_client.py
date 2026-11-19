@@ -57,7 +57,8 @@ def server(
             return httpx.Response(200, json={"data": REVERSE})
         assert request.headers["X-Goog-Api-Key"] == "google"
         if path.endswith("searchLatestFloodStatusByArea"):
-            return httpx.Response(200, json={"floodStatuses": statuses or []})
+            home = b'"regionCode":"NG"' in request.content
+            return httpx.Response(200, json={"floodStatuses": (statuses or []) if home else []})
         if path.endswith("flashFloods:search"):
             return httpx.Response(200, json={"flashFloodEvents": flashes or []})
         return httpx.Response(200, json={"kml": KML[path.rsplit("/", 1)[-1]]})
@@ -228,6 +229,20 @@ def test_flash_outage_keeps_the_riverine_answer() -> None:
     assert found.gaps == ("flash floods unavailable: HTTP 503 from /v1/flashFloods:search",)
 
 
+def test_a_neighbour_outage_is_a_gap() -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        if b'"CM"' in request.content:
+            return httpx.Response(503)
+        return server([STATUS])(request)
+
+    found = ok(run(handle))
+    assert found.verdict == "FORECAST"
+    assert found.gaps == (
+        "riverine forecasts for CM unavailable: "
+        "HTTP 503 from /v1/floodStatus:searchLatestFloodStatusByArea",
+    )
+
+
 def test_riverine_outage_is_a_failure() -> None:
     assert run(server(broken=("floodStatus",))) == Failure(
         "HTTP 503 from /v1/floodStatus:searchLatestFloodStatusByArea"
@@ -271,7 +286,7 @@ def test_follows_pages_and_names_no_key_on_network_failure() -> None:
     calls: list[bytes] = []
 
     def paged(request: httpx.Request) -> httpx.Response:
-        if "floodStatus" in request.url.path:
+        if b'"NG"' in request.content:
             calls.append(request.content)
             more = {"nextPageToken": "t"} if len(calls) == 1 else {}
             return httpx.Response(200, json={"floodStatuses": [STATUS], **more})
@@ -344,7 +359,7 @@ def test_a_batch_downloads_the_forecasts_once() -> None:
     assert verdicts == ["FORECAST", "not a coordinate in Nigeria", "FORECAST", "UNKNOWN"]
     assert sorted(paths) == sorted(
         [
-            "/v1/floodStatus:searchLatestFloodStatusByArea",
+            *["/v1/floodStatus:searchLatestFloodStatusByArea"] * 4,
             "/v1/flashFloods:search",
             "/v1/serializedPolygons/far",
             "/v1/serializedPolygons/here",
