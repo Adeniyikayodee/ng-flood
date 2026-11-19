@@ -91,7 +91,7 @@ class Assessment:
     flash: str | None
     """HIGHLY_LIKELY or LIKELY, at 20 km resolution."""
     gauges: int
-    """Fresh gauges of known severity within COVER_KM."""
+    """Fresh, quality-verified gauges of known severity within COVER_KM."""
     gaps: tuple[str, ...]
     """What stops a NONE: anything stale, missing or unreadable that could reach the point."""
     postcode: str | None = None
@@ -99,7 +99,7 @@ class Assessment:
     watch: Watch | None = None
     nearest_gauge_km: float | None = None
     notes: tuple[str, ...] = ()
-    """Gaps too far away to change the verdict."""
+    """What did not change the verdict: gaps too far away, and unverified gauges."""
     areas: Mapping[str, str | None] = field(default_factory=dict)
     """Every forecast area that holds the point, by id, with the SHA-256 of its KML."""
 
@@ -202,7 +202,8 @@ def assess(
     stale, far_stale = selection.stale
     beyond = f"beyond {COVER_KM:g} km"
     worst = min(hits, key=_rank, default=None)
-    known = sorted(km(s) for s in selection.statuses if s.severity in _KNOWN)
+    known = sorted(km(s) for s in selection.statuses if s.severity in _KNOWN and s.verified)
+    unverified = sum(s.severity in _KNOWN and not s.verified for s in close)
     alerts = {s.gauge_id: pid for s in selection.statuses if (pid := _alert(s)) and inside(pid)}
     blind = [s for s in close if s.severity in _SEVERITIES and not _areas(s)]
     risen = min(
@@ -237,6 +238,7 @@ def assess(
         notes=(
             *some(far_stale, "stale forecast", beyond),
             *some(far, "forecast area", f"unavailable {beyond}"),
+            *some(unverified, "unverified gauge", "not counted"),
         ),
         areas={pid: (digests or {}).get(pid) for pid in selection.polygon_ids if inside(pid)},
     )

@@ -123,6 +123,15 @@ def test_none_needs_a_fresh_gauge_in_range_and_no_gaps() -> None:
     assert ok(run(server([DRY | {"severity": "UNKNOWN"}]))).verdict == "UNKNOWN"
 
 
+def test_an_unverified_gauge_cannot_make_none() -> None:
+    doubtful = DRY | {"qualityVerified": False, "gaugeId": "g2"}
+    found = ok(run(server([doubtful])))
+    assert (found.verdict, found.gauges, found.nearest_gauge_km) == ("UNKNOWN", 0, None)
+    assert found.notes == ("1 unverified gauge not counted",)
+    assert ok(run(server([doubtful, DRY]))).verdict == "NONE"
+    assert ok(run(server([STATUS | {"qualityVerified": False}]))).verdict == "FORECAST"
+
+
 def test_a_gauge_beyond_cover_does_not_make_none() -> None:
     there = DRY | {"gaugeLocation": {"latitude": 8.6, "longitude": 7.0}}
     found = ok(run(server([there])))
