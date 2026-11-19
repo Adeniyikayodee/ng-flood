@@ -328,6 +328,7 @@ def render(a: Assessment) -> str:
     )
     lines = [
         f"Verdict:  {a.verdict}",
+        f"Point:    lat {a.lat:g}, lng {a.lng:g}",
         f"LGA:      {f'{a.lga}, {a.state}' if a.lga else 'not resolved'}",
         f"Area:     {a.area or 'postcode not resolved'}",
         f"Riverine: {river}",
