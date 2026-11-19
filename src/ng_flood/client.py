@@ -125,6 +125,7 @@ class Client:
         if forecasts is None:
             return Failure("the snapshot holds a page Google would not send")
         now = now or datetime.now(UTC)
+        digest = source.digest() if snapshot and snapshot.complete else None
         polygons: dict[str, tuple[Polygon, ...] | None] = {}
         digests: dict[str, str] = {}
         saved: set[str] = set()
@@ -140,7 +141,9 @@ class Client:
                     digests[pid] = sha256(text.encode()).hexdigest()
             postcode, area, why = self._label(lat, lng)
             result = assess(lat, lng, selection, polygons, forecasts.gaps, digests)
-            results[i] = replace(result, postcode=postcode, area=area, notes=result.notes + why)
+            results[i] = replace(
+                result, postcode=postcode, area=area, notes=result.notes + why, snapshot=digest
+            )
             if self._evidence:
                 try:
                     for pid in result.areas.keys() - saved:

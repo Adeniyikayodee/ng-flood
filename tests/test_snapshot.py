@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import httpx
 import pytest
 from test_client import LAT, LNG, NOW, STATUS, Handler, server
@@ -29,7 +31,9 @@ def test_a_whole_snapshot_is_judged_without_the_network() -> None:
         found = offline.assess_many([(LAT, LNG)], NOW, copy)
     assert isinstance(found, list)
     assert isinstance(found[0], Assessment)
-    assert found[0] == live
+    assert isinstance(live, Assessment)
+    assert found[0] == replace(live, snapshot=snapshot.digest())
+    assert live.snapshot is None
 
 
 def test_a_snapshot_without_an_area_is_a_gap_not_a_call() -> None:

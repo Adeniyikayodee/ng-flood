@@ -160,7 +160,9 @@ def test_a_snapshot_is_judged_offline_without_a_key(
     monkeypatch.setattr("ng_flood.cli.Client", partial(Client, http=http))
     capsys.readouterr()
     assert main(["8.0", "7.0", "--json", "--snapshot", str(snap)], NOW) == 0
-    assert json.loads(capsys.readouterr().out)["verdict"] == "FORECAST"
+    record = json.loads(capsys.readouterr().out)
+    assert record["verdict"] == "FORECAST"
+    assert record["snapshot"] == sha256(gzip.decompress(snap.read_bytes())).hexdigest()
     (tmp_path / "bad.json").write_text("{}")
     for bad in ("bad.json", "missing.json", "snap.json.gz.bad"):
         assert main(["8.0", "7.0", "--snapshot", str(tmp_path / bad)], NOW) == 2

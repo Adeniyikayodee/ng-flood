@@ -109,6 +109,8 @@ class Assessment:
     """What did not change the verdict: gaps too far away, and unverified gauges."""
     areas: Mapping[str, str | None] = field(default_factory=dict)
     """Every forecast area that holds the point, by id, with the SHA-256 of its KML."""
+    snapshot: str | None = None
+    """SHA-256 of the saved forecasts judged, which replay the verdict exactly."""
 
     @property
     def verdict(self) -> str:
