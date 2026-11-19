@@ -23,7 +23,10 @@ class Polygon:
 
 def parse_kml(kml: str) -> tuple[Polygon, ...] | None:
     """Every polygon in a KML document. None when it cannot be read or holds no
-    polygon: an area we cannot read is unknown, not empty."""
+    polygon: an area we cannot read is unknown, not empty. KML never needs a DOCTYPE, and
+    one can hide entities that expand without end, so it is refused."""
+    if "<!DOCTYPE" in kml:
+        return None
     try:
         root = ElementTree.fromstring(kml)
     except ElementTree.ParseError:

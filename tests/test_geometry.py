@@ -53,3 +53,5 @@ def test_unreadable_kml_is_unknown_not_empty() -> None:
     assert parse_kml(kml(polygon("6,7 x,7 8,9"))) is None
     assert parse_kml(kml(polygon("6,7 8,7"))) is None
     assert parse_kml(kml("<Polygon></Polygon>")) is None
+    bomb = '<!DOCTYPE kml [<!ENTITY a "aaaa">]>' + kml(polygon(SQUARE))
+    assert parse_kml(bomb) is None
