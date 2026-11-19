@@ -19,6 +19,8 @@ from .client import Client, Failure
 from .snapshot import Snapshot
 
 Site = tuple[str, float, float, dict[str, str]]
+BY = {"lga": ("lga_pcode", "state", "lga"), "state": ("state",), "postcode": ("area",)}
+"""The fields that key each roll-up; the first becomes the row's area."""
 VERDICTS = ("FORECAST", "WATCH", "UNKNOWN", "NONE")
 """Worst first. UNKNOWN outranks NONE, so one blind site stops an area reading as clear."""
 
@@ -47,9 +49,9 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
     )
     parser.add_argument(
         "--by",
-        choices=["postcode"],
-        help="with --sites, print one record for each postcode area, not each site; "
-        "implies --postcode",
+        choices=list(BY),
+        help="with --sites, print one record for each LGA, state or postcode area, "
+        "not each site; postcode implies --postcode",
     )
     parser.add_argument(
         "--records",
@@ -113,7 +115,7 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
     except (UnicodeError, csv.Error) as error:
         sites = f"{args.sites} is not a UTF-8 CSV: {error}"
     key = os.environ.get("GOOGLE_FLOOD_API_KEY", "")
-    label = args.postcode or args.by
+    label = args.postcode or args.by == "postcode"
     nipost = os.environ.get("NG_POSTCODE_API_KEY") if label else None
     need = [
         name
@@ -136,7 +138,7 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         with args.records.open("a", encoding="utf-8") as log:
             log.writelines(json.dumps(record) + "\n" for record in records(sites, rows, now))
     if args.sites:
-        for record in roll_up(rows, now) if args.by else records(sites, rows, now):
+        for record in roll_up(rows, now, args.by) if args.by else records(sites, rows, now):
             print(json.dumps(record))
         if isinstance(results, Failure):
             print(results, file=sys.stderr)
@@ -200,20 +202,24 @@ def records(
         yield {"id": site} | kept | (error if isinstance(result, Failure) else result.as_dict())
 
 
-def roll_up(results: Sequence[Assessment | Failure], now: datetime) -> list[dict[str, Any]]:
-    """One record a postcode area, worst first. Sites with no area share a null row and
+def roll_up(
+    results: Sequence[Assessment | Failure], now: datetime, by: str = "postcode"
+) -> list[dict[str, Any]]:
+    """One record an area, worst first. Sites with no area share a null row and
     failures are counted, so the rows add up to the input."""
-    groups: dict[str | None, list[Assessment | Failure]] = {}
+    fields = BY[by]
+    groups: dict[tuple[str | None, ...], list[Assessment | Failure]] = {}
     for result in results:
-        groups.setdefault(getattr(result, "area", None), []).append(result)
+        groups.setdefault(tuple(getattr(result, f, None) for f in fields), []).append(result)
     rows = []
-    for area, group in groups.items():
+    for (area, *names), group in groups.items():
         found = [result for result in group if isinstance(result, Assessment)]
         counts = Counter(result.verdict for result in found)
         leads = [result.lead_hours for result in found if result.lead_hours is not None]
         rows.append(
             {
                 "area": area,
+                **dict(zip(fields[1:], names, strict=True)),
                 "sites": len(group),
                 "verdict": next((verdict for verdict in VERDICTS if counts[verdict]), None),
                 **{verdict: counts[verdict] for verdict in VERDICTS},

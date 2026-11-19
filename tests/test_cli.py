@@ -112,6 +112,12 @@ def test_a_batch_run_from_end_to_end(
         [],
     )
     monkeypatch.delenv("NG_POSTCODE_API_KEY")
+    code, rows = go(server([STATUS]), "--by", "lga")
+    assert (code, [(r["area"], r["state"], r["lga"], r["sites"]) for r in rows]) == (
+        0,
+        [("NG023012", "Kogi", "Lokoja", 1), (None, None, None, 1)],
+    )
+    assert [r["area"] for r in go(server([STATUS]), "--by", "state")[1]] == ["Kogi", None]
     assert go(server([STATUS]), "--postcode") == (2, [])
     assert go(server([STATUS]), "--by", "postcode") == (2, [])
     sites.write_text("id,lat,lng\nhh-2,north,7.0\n")
