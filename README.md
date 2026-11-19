@@ -102,7 +102,27 @@ A row that cannot be read gets an `error` and does not stop the rest. If Google
 cannot be reached, every site still gets an `error` record with the time, so a
 failed run leaves a trace. The exit code is 1 when no site could be assessed.
 
-From an AI assistant, as an MCP server with one tool, `check_flood_forecast`:
+To work offline, or to share one download with a team, save the forecasts
+first. A snapshot holds every forecast for Nigeria and every area they name:
+
+```sh
+uvx ng-flood --fetch today.json.gz
+uvx ng-flood --sites households.csv --snapshot today.json.gz   # no Google key needed
+```
+
+A record judged from a snapshot carries `snapshot`, the SHA-256 of its JSON.
+With that file and the record's `checked` time, the verdict replays exactly:
+
+```sh
+uvx ng-flood 7.8023 6.7333 --snapshot today.json.gz --at 2026-10-04T12:00:00+00:00
+```
+
+Freshness is judged at the time of the run unless `--at` says otherwise, so an
+old snapshot reads as `UNKNOWN`, never as clear. Google serves only the latest
+forecast, so the repository keeps one snapshot a day on its `archive` branch.
+
+From an AI assistant, as an MCP server with one tool, `check_flood_forecast`.
+It downloads the forecasts at most once every ten minutes:
 
 ```json
 {
@@ -161,8 +181,8 @@ observed floods.
 - The postcode is a label, not a verification. Flash flood cells are about
   20 km, so the result is reported by area, not by building.
 - A coordinate must fall inside Nigeria's border, drawn about 10 km generous.
-- Nothing from NIPOST or Google is cached or stored, unless you pass
-  `--evidence`.
+- Nothing from NIPOST or Google is stored, unless you pass `--evidence` or
+  `--fetch`. The MCP server keeps the forecasts in memory for ten minutes.
 - No site location leaves your machine by default: Google's forecasts are
   downloaded whole and compared locally. Only `--postcode`, `--by postcode`, or
   a NIPOST key given to the library or the MCP server, sends each coordinate to
