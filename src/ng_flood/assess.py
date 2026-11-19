@@ -230,13 +230,15 @@ def some(n: int, noun: str, state: str) -> list[str]:
 
 
 def _areas(status: Status) -> list[tuple[str, str]]:
+    """Areas of a gauge that forecasts flooding; any other gauge's areas are not a forecast."""
+    if status.severity not in _SEVERITIES:
+        return []
     alert = [(ALERT_AREA, status.alert_polygon_id)] if status.alert_polygon_id else []
     return [(level, pid) for level, pid in status.maps if level in _LEVELS] + alert
 
 
 def _rank(hit: Riverine) -> tuple[int, int]:
-    known = hit.severity in _SEVERITIES
-    return _SEVERITIES.index(hit.severity) if known else len(_SEVERITIES), _LEVELS.index(hit.level)
+    return _SEVERITIES.index(hit.severity), _LEVELS.index(hit.level)
 
 
 def _km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:

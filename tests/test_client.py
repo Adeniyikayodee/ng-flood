@@ -100,6 +100,13 @@ def test_alert_area_counts_when_no_map_holds_the_point() -> None:
     assert found.riverine.level == "ALERT_AREA"
 
 
+def test_a_gauge_that_forecasts_no_flooding_has_no_area() -> None:
+    for severity in ("NO_FLOODING", "UNKNOWN"):
+        quiet = STATUS | {"severity": severity, "serializedNotificationPolygonId": "here"}
+        found = ok(run(server([quiet, DRY], broken=("serializedPolygons/",))))
+        assert (found.riverine, found.gaps, found.areas) == (None, (), {})
+
+
 def test_none_needs_a_fresh_gauge_in_range_and_no_gaps() -> None:
     assert ok(run(server([DRY]))).verdict == "NONE"
     assert ok(run(server([]))).verdict == "UNKNOWN"
