@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["pyshp>=2.3", "shapely>=2.0"]
 # ///
-"""Build src/ng_flood/basins.json from HydroBASINS v1c level 8 for Africa (CC BY 4.0):
+"""Build src/ng_flood/basins.json from HydroBASINS v1c level 8 for Africa (HydroSHEDS License):
 every basin within 150 km of Nigeria, simplified to 0.01 degrees, with the basin it drains to.
 
     curl -LO https://data.hydrosheds.org/file/hydrobasins/standard/hybas_af_lev08_v1c.zip
@@ -43,6 +43,10 @@ for hybas, (down, geometry) in sorted(kept.items()):
     ]
     basins.append([hybas, down if down in kept else 0, rings])
 
-data = {"source": "HydroBASINS v1c level 8, CC BY 4.0", "scale": 100, "basins": basins}
+data = {
+    "source": "HydroBASINS v1c level 8, HydroSHEDS License, Lehner and Grill 2013",
+    "scale": 100,
+    "basins": basins,
+}
 (ROOT / "basins.json").write_text(json.dumps(data, separators=(",", ":")) + "\n")
 print(len(basins), "basins")
