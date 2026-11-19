@@ -23,7 +23,8 @@ from .client import Client, Failure
 INSTRUCTIONS = (
     "Checks a coordinate in Nigeria against Google's flood forecasts. A verdict of NONE "
     "means nothing is forecast now, not that the place is safe. WATCH means a gauge nearby "
-    "is elevated but has no map. UNKNOWN means the data was missing or stale. Always pass "
+    "is elevated but has no map. UNKNOWN means the data was missing or stale. Only river "
+    "and flash floods are forecast, not town rain, the sea or dam failures. Always pass "
     "on the notice."
 )
 

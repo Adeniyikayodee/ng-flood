@@ -193,6 +193,7 @@ def render(a: Assessment) -> str:
         ),
         *(f"Gap:      {gap}" for gap in a.gaps),
         *(f"Note:     {note}" for note in a.notes),
+        "Covers:   river and flash floods, not town rain, the sea or dam failures",
         NOTICE,
     ]
     return "\n".join(lines)

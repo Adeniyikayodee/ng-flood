@@ -84,6 +84,8 @@ def test_reports_the_highest_area_that_holds_the_point() -> None:
     assert (found.area, found.postcode) == ("KG-05-A12-FK", "KG-05-A12-FK-01")
     assert found.gaps == ()
     assert "KG-05-A12-FK" in render(found)
+    assert "not town rain" in render(found)
+    assert found.as_dict()["hazards"] == ["riverine", "flash"]
 
 
 def test_severity_outranks_level_across_gauges() -> None:

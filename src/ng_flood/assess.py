@@ -26,6 +26,8 @@ STALE = timedelta(hours=48)
 _LEVELS = ("HIGH", "MEDIUM", "LOW")
 _SEVERITIES = ("EXTREME", "SEVERE", "ABOVE_NORMAL")
 _KNOWN = (*_SEVERITIES, "NO_FLOODING")
+HAZARDS = ("riverine", "flash")
+"""What a verdict covers. Rain in towns, the sea and dam failures are not forecast."""
 NOTICE = (
     "Forecast: Google Flood Forecasting, CC BY 4.0. Not an official warning; "
     "follow NEMA and NIHSA. Postcode: NIPOST."
@@ -130,6 +132,7 @@ def judged() -> dict[str, Any]:
         "version": version("ng-flood"),
         "cover_km": COVER_KM,
         "stale_hours": STALE.total_seconds() / 3600,
+        "hazards": list(HAZARDS),
         "notice": NOTICE,
     }
 
