@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import json
 import os
 import sys
@@ -61,7 +62,17 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         type=Path,
         help="save the KML of every forecast area that holds a site, named by its SHA-256",
     )
+    parser.add_argument(
+        "--fetch",
+        metavar="FILE",
+        type=Path,
+        help="save Nigeria's forecasts and every area they name to FILE (.gz to compress)",
+    )
     args = parser.parse_args(argv)
+    if args.fetch:
+        if args.lat is not None or args.sites or args.postcode or args.json or args.evidence:
+            parser.error("--fetch takes no sites or other options")
+        return fetch(args.fetch, now)
     if (args.sites is None) == (args.lat is None or args.lng is None):
         parser.error("give LAT LNG or --sites CSV")
     if (args.keep or args.by) and not args.sites:
@@ -110,6 +121,23 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
     else:
         print(json.dumps(rows[0].as_dict()) if args.json else render(rows[0]))
     return 0 if any(isinstance(row, Assessment) for row in rows) else 1
+
+
+def fetch(path: Path, now: datetime | None = None) -> int:
+    if not (key := os.environ.get("GOOGLE_FLOOD_API_KEY")):
+        print("set GOOGLE_FLOOD_API_KEY", file=sys.stderr)
+        return 2
+    with Client(key) as client:
+        snapshot = client.fetch(now, whole=True)
+    try:
+        if isinstance(snapshot, Failure):
+            raise OSError(snapshot)
+        data = snapshot.dumps().encode()
+        path.write_bytes(gzip.compress(data, mtime=0) if path.suffix == ".gz" else data)
+    except OSError as error:
+        print(error, file=sys.stderr)
+        return 1
+    return 0
 
 
 def read_sites(lines: Iterator[str], keep: Sequence[str] = ()) -> list[Site] | str:

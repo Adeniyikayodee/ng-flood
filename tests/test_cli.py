@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 import math
 from dataclasses import replace
@@ -16,6 +17,7 @@ from test_client import KML, REVERSE, STATUS, Handler, server
 from ng_flood import Assessment, Client, Failure, Riverine
 from ng_flood.assess import FIELDS
 from ng_flood.cli import Site, main, read_sites, records, roll_up
+from ng_flood.snapshot import Snapshot
 
 NOW = datetime(2026, 10, 4, tzinfo=UTC)
 STAMP = "2026-10-04T00:00:00+00:00"
@@ -114,6 +116,32 @@ def test_a_batch_run_from_end_to_end(
     assert go(server([STATUS]), "--by", "postcode") == (2, [])
     sites.write_text("id,lat,lng\nhh-2,north,7.0\n")
     assert go(server([STATUS]))[0] == 1
+
+
+def test_fetch_saves_a_whole_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def go(handler: Handler, name: str) -> tuple[int, Path]:
+        http = httpx.Client(transport=httpx.MockTransport(handler))
+        monkeypatch.setattr("ng_flood.cli.Client", partial(Client, http=http))
+        return main(["--fetch", str(tmp_path / name)], NOW), tmp_path / name
+
+    monkeypatch.setenv("GOOGLE_FLOOD_API_KEY", "google")
+    code, path = go(server([STATUS]), "snap.json.gz")
+    snapshot = Snapshot.loads(gzip.decompress(path.read_bytes()).decode())
+    assert code == 0
+    assert snapshot is not None
+    assert (snapshot.fetched, snapshot.complete, sorted(snapshot.kml)) == (
+        NOW,
+        True,
+        ["far", "here"],
+    )
+    assert go(server([STATUS]), "snap.json")[1].read_text() == snapshot.dumps()
+    assert go(server(broken=("floodStatus",)), "down.json")[0] == 1
+    assert not (tmp_path / "down.json").exists()
+    assert go(server([STATUS]), "no/snap.json")[0] == 1
+    monkeypatch.delenv("GOOGLE_FLOOD_API_KEY")
+    assert go(server([STATUS]), "snap.json")[0] == 2
+    with pytest.raises(SystemExit):
+        main(["8.0", "7.0", "--fetch", "snap.json"])
 
 
 def test_usage_errors_exit_2_before_any_call(
