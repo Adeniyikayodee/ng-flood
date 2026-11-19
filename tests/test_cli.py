@@ -64,7 +64,7 @@ def test_sites_roll_up_by_postcode_area_and_none_is_lost() -> None:
     ]
     assert (rows[0]["FORECAST"], rows[0]["lead_hours"], rows[0]["checked"]) == (2, 6.0, STAMP)
     assert (rows[1]["NONE"], rows[1]["UNKNOWN"], rows[1]["lead_hours"]) == (1, 1, None)
-    assert (rows[2]["version"], rows[2]["cover_km"]) == ("0.1.0", 50)
+    assert (rows[2]["version"], rows[2]["basins"]) == ("0.1.0", "HydroBASINS v1c level 8")
 
 
 def test_a_batch_run_from_end_to_end(
@@ -91,7 +91,7 @@ def test_a_batch_run_from_end_to_end(
     )
     assert rows[0]["areas"] == {"here": sha256(KML["here"].encode()).hexdigest()}
     assert (tmp_path / "kml" / f"{rows[0]['areas']['here']}.kml").read_text() == KML["here"]
-    assert (rows[0]["version"], rows[0]["cover_km"], rows[0]["stale_hours"]) == ("0.1.0", 50, 48)
+    assert (rows[0]["version"], rows[0]["stale_hours"]) == ("0.1.0", 48)
     assert rows[0]["area"] is None
     assert go(server([STATUS]), "--postcode")[1][0]["area"] == "KG-05-A12-FK"
     code, rows = go(server([STATUS]), "--by", "postcode")

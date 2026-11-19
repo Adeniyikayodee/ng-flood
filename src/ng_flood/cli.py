@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .assess import COVER_KM, FIELDS, NOTICE, Assessment, judged
+from .assess import FIELDS, NOTICE, Assessment, judged
 from .client import Client, Failure
 from .snapshot import Snapshot
 
@@ -238,7 +238,7 @@ def render(a: Assessment) -> str:
     river = (
         f"inside {r.level} area of gauge {r.gauge_id}, {r.severity}, trend {r.trend or 'unknown'}"
         if r
-        else f"not inside an area ({a.gauges} gauge{'s' * (a.gauges != 1)} within {COVER_KM:g} km)"
+        else f"not inside an area ({a.gauges} gauge{'s' * (a.gauges != 1)} on this river)"
     )
     lines = [
         f"Verdict:  {a.verdict}",

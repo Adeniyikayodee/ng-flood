@@ -22,6 +22,7 @@ class Basins:
         self._shapes = [(b, shape) for b, _, shape in basins]
         self._down = {b: down for b, down, _ in basins}
         self._up: defaultdict[int, list[int]] = defaultdict(list)
+        self._reach: dict[int, frozenset[int]] = {}
         for b, down, _ in basins:
             self._up[down].append(b)
 
@@ -33,13 +34,15 @@ class Basins:
         gauge on the main river often sits."""
         if basin is None:
             return frozenset()
-        seen, todo = {basin}, [basin]
-        while todo:
-            for up in self._up[todo.pop()]:
-                if up not in seen:
-                    seen.add(up)
-                    todo.append(up)
-        return frozenset(seen | {self._down.get(basin, 0)} - {0})
+        if basin not in self._reach:
+            seen, todo = {basin}, [basin]
+            while todo:
+                for up in self._up[todo.pop()]:
+                    if up not in seen:
+                        seen.add(up)
+                        todo.append(up)
+            self._reach[basin] = frozenset(seen | {self._down.get(basin, 0)} - {0})
+        return self._reach[basin]
 
 
 @cache

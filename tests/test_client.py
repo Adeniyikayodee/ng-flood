@@ -8,9 +8,11 @@ from typing import Any
 
 import httpx
 import pytest
+from conftest import box
 from test_geometry import SQUARE, kml, polygon
 
 from ng_flood import Assessment, Client, Failure, Watch, google
+from ng_flood.basins import Basins
 from ng_flood.cli import render
 
 NOW = datetime(2026, 10, 4, 12, tzinfo=UTC)
@@ -138,10 +140,36 @@ def test_an_unverified_gauge_cannot_make_none() -> None:
 def test_a_gauge_beyond_cover_does_not_make_none() -> None:
     there = DRY | {"gaugeLocation": {"latitude": 8.6, "longitude": 7.0}}
     found = ok(run(server([there])))
-    assert (found.verdict, found.gauges, found.nearest_gauge_km) == ("UNKNOWN", 0, 66.7)
+    assert (found.verdict, found.gauges, found.nearest_gauge_km) == ("UNKNOWN", 0, None)
     assert ok(run(server([there, DRY]))).nearest_gauge_km == 15.6
     severe = there | {"severity": "SEVERE"}
     assert ok(run(server([severe]))).watch is None
+
+
+def test_a_gauge_upstream_or_just_downstream_covers_the_site() -> None:
+    # 5 drains to 4, 4 and 3 drain to 2, 2 to 1: the site is in 4.
+    basins = Basins(
+        [
+            (1, 0, box(6.5, 6.5, 7.5, 7.0)),
+            (2, 1, box(6.5, 7.0, 7.5, 7.5)),
+            (3, 2, box(7.5, 7.0, 8.5, 8.5)),
+            (4, 2, box(6.5, 7.5, 7.5, 8.5)),
+            (5, 4, box(6.5, 8.5, 7.5, 9.5)),
+        ]
+    )
+
+    def gauge(lat: float, lng: float) -> dict[str, Any]:
+        return DRY | {"gaugeLocation": {"latitude": lat, "longitude": lng}}
+
+    for lat, lng, verdict in (
+        (9.2, 7.0, "NONE"),
+        (7.2, 7.0, "NONE"),
+        (6.8, 7.0, "UNKNOWN"),
+        (8.0, 8.0, "UNKNOWN"),
+    ):
+        http = httpx.Client(transport=httpx.MockTransport(server([gauge(lat, lng)])))
+        with Client("google", http=http, basins=basins) as client:
+            assert ok(client.assess(LAT, LNG, NOW)).verdict == verdict, (lat, lng)
 
 
 def test_a_stale_forecast_is_a_gap() -> None:
@@ -156,8 +184,8 @@ def test_a_gap_too_far_to_matter_is_only_a_note() -> None:
     found = ok(run(server([DRY] * 30 + [old, STATUS | there], broken=("serializedPolygons/",))))
     assert (found.verdict, found.gaps) == ("NONE", ())
     assert found.notes == (
-        "1 stale forecast beyond 50 km",
-        "2 forecast areas unavailable beyond 50 km",
+        "1 stale forecast on other rivers",
+        "2 forecast areas unavailable on other rivers",
     )
     assert "Note:     1 stale" in render(found)
 

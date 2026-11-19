@@ -20,6 +20,7 @@ from ng_postcode.client import Client as Nipost
 
 from . import google
 from .assess import Assessment, area_ids, assess, select
+from .basins import Basins, bundled
 from .geometry import Polygon, contains, parse_kml
 from .snapshot import Snapshot, read
 
@@ -71,8 +72,10 @@ class Client:
         *,
         http: httpx.Client | None = None,
         evidence: Path | None = None,
+        basins: Basins | None = None,
     ) -> None:
         self._evidence = evidence
+        self._basins = basins
         self._http = http if http is not None else httpx.Client(timeout=TIMEOUT)
         self._owns_http = http is None
         self._headers = {"X-Goog-Api-Key": google_key}
@@ -129,12 +132,16 @@ class Client:
             return Failure("the snapshot holds a page Google would not send")
         now = now or datetime.now(UTC)
         digest = source.digest() if snapshot and snapshot.complete else None
+        basins = self._basins or bundled()
+        homes = {s: basins.at(s.lat, s.lng) for s in forecasts.statuses}
         polygons: dict[str, tuple[Polygon, ...] | None] = {}
         digests: dict[str, str] = {}
         saved: set[str] = set()
         for i in inside:
             lat, lng = points[i]
-            selection = select(lat, lng, forecasts.statuses, forecasts.flashes, now)
+            reach = basins.reach(basins.at(lat, lng))
+            cover = frozenset(s for s, home in homes.items() if home in reach)
+            selection = select(lat, lng, forecasts.statuses, forecasts.flashes, now, cover)
             for pid in selection.polygon_ids:
                 if pid not in polygons:
                     if pid not in source.kml and not source.complete:

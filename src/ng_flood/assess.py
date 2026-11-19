@@ -15,13 +15,12 @@ from importlib.metadata import version
 from math import asin, cos, radians, sin, sqrt
 from typing import Any
 
+from .basins import SOURCE
 from .geometry import Polygon, contains
 from .google import Flash, Status
 
 RANGE_KM = 150.0
-"""Inundation maps reach tens of km from their gauge; this leaves a wide margin."""
-COVER_KM = 50.0
-"""NONE needs a fresh gauge this close. Provisional until checked against live data."""
+"""No gauge further away is read. Inundation maps reach tens of km from their gauge."""
 STALE = timedelta(hours=48)
 _LEVELS = ("HIGH", "MEDIUM", "LOW")
 _SEVERITIES = ("EXTREME", "SEVERE", "ABOVE_NORMAL")
@@ -43,8 +42,10 @@ class Selection:
     statuses: tuple[Status, ...]
     flashes: tuple[Flash, ...]
     stale: tuple[int, int]
-    """Stale gauges within COVER_KM, and beyond it."""
+    """Stale gauges that cover the point, and others."""
     now: datetime
+    cover: frozenset[Status] = frozenset()
+    """Gauges in the point's basin, upstream of it, or in the basin it drains to."""
 
     @property
     def polygon_ids(self) -> tuple[str, ...]:
@@ -98,7 +99,7 @@ class Assessment:
     flash: str | None
     """HIGHLY_LIKELY or LIKELY, at 20 km resolution."""
     gauges: int
-    """Fresh, quality-verified gauges of known severity within COVER_KM."""
+    """Fresh, quality-verified gauges of known severity that cover the point."""
     gaps: tuple[str, ...]
     """What stops a NONE: anything stale, missing or unreadable that could reach the point."""
     postcode: str | None = None
@@ -137,7 +138,7 @@ def judged() -> dict[str, Any]:
     """The version and thresholds behind a verdict, and the notice to pass on."""
     return {
         "version": version("ng-flood"),
-        "cover_km": COVER_KM,
+        "basins": SOURCE,
         "stale_hours": STALE.total_seconds() / 3600,
         "hazards": list(HAZARDS),
         "notice": NOTICE,
@@ -149,13 +150,18 @@ FIELDS = frozenset(Assessment.__dataclass_fields__) | {"verdict", "lead_hours", 
 
 
 def select(
-    lat: float, lng: float, statuses: tuple[Status, ...], flashes: tuple[Flash, ...], now: datetime
+    lat: float,
+    lng: float,
+    statuses: tuple[Status, ...],
+    flashes: tuple[Flash, ...],
+    now: datetime,
+    cover: frozenset[Status] = frozenset(),
 ) -> Selection:
-    near = [(km, s) for s in statuses if (km := _km(lat, lng, s.lat, s.lng)) <= RANGE_KM]
-    fresh = tuple(s for _, s in near if _fresh(s, now))
-    old = [km <= COVER_KM for km, s in near if not _fresh(s, now)]
+    near = [s for s in statuses if _km(lat, lng, s.lat, s.lng) <= RANGE_KM]
+    fresh = tuple(s for s in near if _fresh(s, now))
+    old = [s in cover for s in near if not _fresh(s, now)]
     live = tuple(f for f in flashes if now <= f.issued + timedelta(hours=f.period_hours))
-    return Selection(fresh, live, (sum(old), len(old) - sum(old)), now)
+    return Selection(fresh, live, (sum(old), len(old) - sum(old)), now, cover)
 
 
 def assess(
@@ -204,15 +210,15 @@ def assess(
         ),
         None,
     )
-    close = [s for s in selection.statuses if km(s) <= COVER_KM]
+    close = [s for s in selection.statuses if s in selection.cover]
     near_ids = {pid for s in close for pid in _ids(s)}
     far_ids = {pid for s in selection.statuses for pid in _ids(s)} - near_ids
     missing = [pid for pid in selection.polygon_ids if polygons.get(pid) is None]
     far = sum(pid in far_ids for pid in missing)
     stale, far_stale = selection.stale
-    beyond = f"beyond {COVER_KM:g} km"
+    beyond = "on other rivers"
     worst = min(hits, key=_rank, default=None)
-    known = sorted(km(s) for s in selection.statuses if s.severity in _KNOWN and s.verified)
+    known = sorted(km(s) for s in close if s.severity in _KNOWN and s.verified)
     unverified = sum(s.severity in _KNOWN and not s.verified for s in close)
     alerts = {s.gauge_id: pid for s in selection.statuses if (pid := _alert(s)) and inside(pid)}
     blind = [s for s in close if s.severity in _SEVERITIES and not _areas(s)]
@@ -227,7 +233,7 @@ def assess(
         selection.now,
         worst,
         flash,
-        sum(d <= COVER_KM for d in known),
+        len(known),
         (
             *gaps,
             *some(stale, "stale forecast", "ignored"),
