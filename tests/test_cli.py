@@ -163,6 +163,12 @@ def test_a_snapshot_is_judged_offline_without_a_key(
     record = json.loads(capsys.readouterr().out)
     assert record["verdict"] == "FORECAST"
     assert record["snapshot"] == sha256(gzip.decompress(snap.read_bytes())).hexdigest()
+    late = (NOW + timedelta(days=3)).isoformat()
+    assert main(["8.0", "7.0", "--json", "--snapshot", str(snap), "--at", late]) == 0
+    assert json.loads(capsys.readouterr().out)["verdict"] == "UNKNOWN"
+    with pytest.raises(SystemExit):
+        main(["8.0", "7.0", "--snapshot", str(snap), "--at", "2026-10-04T00:00:00"])
+    capsys.readouterr()
     (tmp_path / "bad.json").write_text("{}")
     for bad in ("bad.json", "missing.json", "snap.json.gz.bad"):
         assert main(["8.0", "7.0", "--snapshot", str(tmp_path / bad)], NOW) == 2

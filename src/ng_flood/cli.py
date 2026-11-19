@@ -75,6 +75,12 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         type=Path,
         help="judge from forecasts saved by --fetch, offline and without a Google key",
     )
+    parser.add_argument(
+        "--at",
+        metavar="TIME",
+        type=moment,
+        help="judge as of this ISO time with offset; with --snapshot, replays a record",
+    )
     args = parser.parse_args(argv)
     if args.fetch:
         if args.lat is not None or args.sites or args.postcode or args.json or args.evidence:
@@ -122,7 +128,7 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
     if isinstance(sites, str):
         print(sites, file=sys.stderr)
         return 2
-    now = now or datetime.now(UTC)
+    now = args.at or now or datetime.now(UTC)
     with Client(key, nipost, evidence=args.evidence) as client:
         results = client.assess_many([(lat, lng) for _, lat, lng, _ in sites], now, snapshot)
     rows = results if isinstance(results, list) else [results] * len(sites)
@@ -156,6 +162,13 @@ def fetch(path: Path, now: datetime | None = None) -> int:
         print(error, file=sys.stderr)
         return 1
     return 0
+
+
+def moment(text: str) -> datetime:
+    time = datetime.fromisoformat(text)
+    if time.tzinfo is None:
+        raise ValueError(text)
+    return time
 
 
 def load(path: Path) -> Snapshot | None:
