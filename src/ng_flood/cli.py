@@ -16,6 +16,7 @@ from typing import Any
 
 from .assess import COVER_KM, FIELDS, NOTICE, Assessment, judged
 from .client import Client, Failure
+from .snapshot import Snapshot
 
 Site = tuple[str, float, float, dict[str, str]]
 VERDICTS = ("FORECAST", "WATCH", "UNKNOWN", "NONE")
@@ -68,6 +69,12 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         type=Path,
         help="save Nigeria's forecasts and every area they name to FILE (.gz to compress)",
     )
+    parser.add_argument(
+        "--snapshot",
+        metavar="FILE",
+        type=Path,
+        help="judge from forecasts saved by --fetch, offline and without a Google key",
+    )
     args = parser.parse_args(argv)
     if args.fetch:
         if args.lat is not None or args.sites or args.postcode or args.json or args.evidence:
@@ -84,6 +91,9 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
     if args.json and args.sites:
         parser.error("--sites always prints JSON; drop --json")
     sites: list[Site] | str = [("", args.lat, args.lng, {})]
+    snapshot = load(args.snapshot) if args.snapshot else None
+    if args.snapshot and snapshot is None:
+        sites = f"{args.snapshot} is not a snapshot saved by --fetch"
     try:
         if args.evidence:
             args.evidence.mkdir(parents=True, exist_ok=True)
@@ -96,17 +106,25 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         sites = str(error)
     except (UnicodeError, csv.Error) as error:
         sites = f"{args.sites} is not a UTF-8 CSV: {error}"
-    key = os.environ.get("GOOGLE_FLOOD_API_KEY")
+    key = os.environ.get("GOOGLE_FLOOD_API_KEY", "")
     label = args.postcode or args.by
     nipost = os.environ.get("NG_POSTCODE_API_KEY") if label else None
-    if not isinstance(sites, str) and not (key and (nipost or not label)):
-        sites = f"set {'NG_POSTCODE_API_KEY' if key else 'GOOGLE_FLOOD_API_KEY'}"
-    if isinstance(sites, str) or not key:
+    need = [
+        name
+        for name, ok in (
+            ("GOOGLE_FLOOD_API_KEY", key or snapshot),
+            ("NG_POSTCODE_API_KEY", nipost or not label),
+        )
+        if not ok
+    ]
+    if need and not isinstance(sites, str):
+        sites = f"set {need[0]}"
+    if isinstance(sites, str):
         print(sites, file=sys.stderr)
         return 2
     now = now or datetime.now(UTC)
     with Client(key, nipost, evidence=args.evidence) as client:
-        results = client.assess_many([(lat, lng) for _, lat, lng, _ in sites], now)
+        results = client.assess_many([(lat, lng) for _, lat, lng, _ in sites], now, snapshot)
     rows = results if isinstance(results, list) else [results] * len(sites)
     if args.records:
         with args.records.open("a", encoding="utf-8") as log:
@@ -138,6 +156,14 @@ def fetch(path: Path, now: datetime | None = None) -> int:
         print(error, file=sys.stderr)
         return 1
     return 0
+
+
+def load(path: Path) -> Snapshot | None:
+    try:
+        data = path.read_bytes()
+        return Snapshot.loads((gzip.decompress(data) if path.suffix == ".gz" else data).decode())
+    except (OSError, EOFError, UnicodeError):
+        return None
 
 
 def read_sites(lines: Iterator[str], keep: Sequence[str] = ()) -> list[Site] | str:

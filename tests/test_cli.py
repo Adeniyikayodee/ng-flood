@@ -144,6 +144,31 @@ def test_fetch_saves_a_whole_snapshot(tmp_path: Path, monkeypatch: pytest.Monkey
         main(["8.0", "7.0", "--fetch", "snap.json"])
 
 
+def test_a_snapshot_is_judged_offline_without_a_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def never(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(request.url)
+
+    monkeypatch.setenv("GOOGLE_FLOOD_API_KEY", "google")
+    http = httpx.Client(transport=httpx.MockTransport(server([STATUS])))
+    monkeypatch.setattr("ng_flood.cli.Client", partial(Client, http=http))
+    snap = tmp_path / "snap.json.gz"
+    assert main(["--fetch", str(snap)], NOW) == 0
+    monkeypatch.delenv("GOOGLE_FLOOD_API_KEY")
+    http = httpx.Client(transport=httpx.MockTransport(never))
+    monkeypatch.setattr("ng_flood.cli.Client", partial(Client, http=http))
+    capsys.readouterr()
+    assert main(["8.0", "7.0", "--json", "--snapshot", str(snap)], NOW) == 0
+    assert json.loads(capsys.readouterr().out)["verdict"] == "FORECAST"
+    (tmp_path / "bad.json").write_text("{}")
+    for bad in ("bad.json", "missing.json", "snap.json.gz.bad"):
+        assert main(["8.0", "7.0", "--snapshot", str(tmp_path / bad)], NOW) == 2
+        assert "is not a snapshot" in capsys.readouterr().err
+    assert main(["8.0", "7.0", "--postcode", "--snapshot", str(snap)], NOW) == 2
+    assert "set NG_POSTCODE_API_KEY" in capsys.readouterr().err
+
+
 def test_usage_errors_exit_2_before_any_call(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
