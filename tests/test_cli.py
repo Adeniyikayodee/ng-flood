@@ -115,7 +115,7 @@ def test_a_batch_run_from_end_to_end(
     assert (code, rows[0]["verdict"], rows[1]["error"]) == (
         0,
         "FORECAST",
-        "not a coordinate in Nigeria",
+        "lat or lng is not a number",
     )
     assert rows[0]["areas"] == {"here": sha256(KML["here"].encode()).hexdigest()}
     assert (tmp_path / "kml" / f"{rows[0]['areas']['here']}.kml").read_text() == KML["here"]

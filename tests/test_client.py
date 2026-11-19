@@ -303,7 +303,7 @@ def test_outside_nigeria_makes_no_call() -> None:
         raise AssertionError(request.url)
 
     assert run(never, lat=51.5) == Failure("not a coordinate in Nigeria")
-    assert run(never, lat=float("nan")) == Failure("not a coordinate in Nigeria")
+    assert run(never, lat=float("nan")) == Failure("lat or lng is not a number")
 
 
 def test_the_border_decides_what_is_nigeria() -> None:

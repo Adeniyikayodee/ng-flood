@@ -49,7 +49,7 @@ class Failure:
 
 
 def _in_nigeria(lat: float, lng: float) -> bool:
-    return isfinite(lat) and isfinite(lng) and contains(_NIGERIA, lat, lng)
+    return isfinite(lat + lng) and contains(_NIGERIA, lat, lng)
 
 
 def _retry_after(response: httpx.Response) -> float:
@@ -121,7 +121,12 @@ class Client:
         so does evidence that cannot be saved.
         """
         results: list[Assessment | Failure] = [
-            Failure("not a coordinate in Nigeria") for _ in points
+            Failure(
+                "not a coordinate in Nigeria"
+                if isfinite(lat + lng)
+                else "lat or lng is not a number"
+            )
+            for lat, lng in points
         ]
         inside = [i for i, point in enumerate(points) if _in_nigeria(*point)]
         self._strikes.clear()
