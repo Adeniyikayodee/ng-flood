@@ -118,6 +118,16 @@ def test_a_batch_run_from_end_to_end(
         [("NG023012", "Kogi", "Lokoja", 1), (None, None, None, 1)],
     )
     assert [r["area"] for r in go(server([STATUS]), "--by", "state")[1]] == ["Kogi", None]
+    wards = tmp_path / "wards.geojson"
+    square = [[[6, 7], [8, 7], [8, 9], [6, 9], [6, 7]]]
+    geometry = {"type": "Polygon", "coordinates": square}
+    wards.write_text(
+        json.dumps({"features": [{"properties": {"ward": "W1"}, "geometry": geometry}]})
+    )
+    code, rows = go(server([STATUS]), "--by", "ward", "--areas", str(wards), "--records", str(log))
+    assert (code, [(r["area"], r["sites"]) for r in rows]) == (0, [("W1", 1), (None, 1)])
+    assert json.loads(log.read_text().splitlines()[-2])["ward"] == "W1"
+    assert go(server([STATUS]), "--by", "name", "--areas", str(wards)) == (2, [])
     assert go(server([STATUS]), "--postcode") == (2, [])
     assert go(server([STATUS]), "--by", "postcode") == (2, [])
     sites.write_text("id,lat,lng\nhh-2,north,7.0\n")
@@ -204,7 +214,10 @@ def test_usage_errors_exit_2_before_any_call(
         ["8.0", "7.0", "--by", "postcode"],
         ["--sites", str(bad), "--records", "log.jsonl"],
         ["--sites", str(bad), "--json"],
-        ["--sites", str(bad), "--keep", "lga, area"],
+        ["--sites", str(bad), "--keep", "ward, area"],
+        ["--sites", str(bad), "--by", "ward"],
+        ["--sites", str(bad), "--areas", "wards.geojson"],
+        ["--sites", str(bad), "--areas", "wards.geojson", "--by", "lga"],
     ):
         with pytest.raises(SystemExit):
             main(argv)

@@ -14,11 +14,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .areas import read_geojson
 from .assess import FIELDS, NOTICE, Assessment, judged
 from .client import Client, Failure
 from .snapshot import Snapshot
 
-Site = tuple[str, float, float, dict[str, str]]
+Site = tuple[str, float, float, dict[str, str | None]]
 BY = {"lga": ("lga_pcode", "state", "lga"), "state": ("state",), "postcode": ("area",)}
 """The fields that key each roll-up; the first becomes the row's area."""
 VERDICTS = ("FORECAST", "WATCH", "UNKNOWN", "NONE")
@@ -49,9 +50,14 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
     )
     parser.add_argument(
         "--by",
-        choices=list(BY),
-        help="with --sites, print one record for each LGA, state or postcode area, "
-        "not each site; postcode implies --postcode",
+        help="with --sites, print one record for each lga, state or postcode area, or each "
+        "value of this property of --areas, not each site; postcode implies --postcode",
+    )
+    parser.add_argument(
+        "--areas",
+        metavar="GEOJSON",
+        type=Path,
+        help="with --by PROPERTY, label and roll up sites by these polygons, such as wards",
     )
     parser.add_argument(
         "--records",
@@ -94,6 +100,12 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         parser.error("--keep and --by need --sites")
     if args.records and not args.by:
         parser.error("--records needs --by")
+    if args.areas and not args.by:
+        parser.error("--areas needs --by PROPERTY")
+    if args.by and not args.areas and args.by not in BY:
+        parser.error("--by takes lga, state or postcode, or a property of --areas")
+    if args.areas and args.by in FIELDS.union(("id", "error"), args.keep):
+        parser.error(f"--by {args.by} clashes with a field every record has")
     if clash := sorted(FIELDS.union(("id", "error")).intersection(args.keep)):
         parser.error(f"--keep cannot take {', '.join(clash)}: every record has its own")
     if args.json and args.sites:
@@ -114,8 +126,18 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         sites = str(error)
     except (UnicodeError, csv.Error) as error:
         sites = f"{args.sites} is not a UTF-8 CSV: {error}"
+    if args.areas and not isinstance(sites, str):
+        try:
+            areas = read_geojson(args.areas.read_text(encoding="utf-8"), args.by)
+        except (OSError, UnicodeError):
+            areas = None
+        sites = (
+            [(i, lat, lng, kept | {args.by: areas.at(lat, lng)}) for i, lat, lng, kept in sites]
+            if areas
+            else f"{args.areas} has no polygon with a {args.by} property"
+        )
     key = os.environ.get("GOOGLE_FLOOD_API_KEY", "")
-    label = args.postcode or args.by == "postcode"
+    label = args.postcode or (args.by == "postcode" and not args.areas)
     nipost = os.environ.get("NG_POSTCODE_API_KEY") if label else None
     need = [
         name
@@ -138,7 +160,9 @@ def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
         with args.records.open("a", encoding="utf-8") as log:
             log.writelines(json.dumps(record) + "\n" for record in records(sites, rows, now))
     if args.sites:
-        for record in roll_up(rows, now, args.by) if args.by else records(sites, rows, now):
+        labels = [kept[args.by] for *_, kept in sites] if args.areas else None
+        rolled = roll_up(rows, now, args.by, labels) if args.by else records(sites, rows, now)
+        for record in rolled:
             print(json.dumps(record))
         if isinstance(results, Failure):
             print(results, file=sys.stderr)
@@ -203,14 +227,23 @@ def records(
 
 
 def roll_up(
-    results: Sequence[Assessment | Failure], now: datetime, by: str = "postcode"
+    results: Sequence[Assessment | Failure],
+    now: datetime,
+    by: str = "postcode",
+    labels: Sequence[str | None] | None = None,
 ) -> list[dict[str, Any]]:
-    """One record an area, worst first. Sites with no area share a null row and
-    failures are counted, so the rows add up to the input."""
-    fields = BY[by]
+    """One record an area, worst first, by the fields in BY or by each site's label.
+    Sites with no area share a null row and failures are counted, so the rows add up
+    to the input."""
+    fields = BY.get(by, (by,))
+    keys = (
+        [(label,) for label in labels]
+        if labels is not None
+        else [tuple(getattr(result, f, None) for f in fields) for result in results]
+    )
     groups: dict[tuple[str | None, ...], list[Assessment | Failure]] = {}
-    for result in results:
-        groups.setdefault(tuple(getattr(result, f, None) for f in fields), []).append(result)
+    for key, result in zip(keys, results, strict=True):
+        groups.setdefault(key, []).append(result)
     rows = []
     for (area, *names), group in groups.items():
         found = [result for result in group if isinstance(result, Assessment)]
