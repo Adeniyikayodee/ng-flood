@@ -34,6 +34,23 @@ async def test_the_tool_returns_the_verdict_and_the_notice() -> None:
 
 
 @pytest.mark.anyio
+async def test_one_download_serves_calls_for_ten_minutes(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [0.0]
+    monkeypatch.setattr("ng_flood.server.monotonic", lambda: clock[0])
+    paths: list[str] = []
+
+    def counted(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return server([STATUS | {"issuedTime": "2999-01-01T00:00:00Z"}])(request)
+
+    async with mcp(counted) as client:
+        for clock[0] in (0.0, 599.0, 601.0):
+            await client.call_tool("check_flood_forecast", {"latitude": LAT, "longitude": LNG})
+    assert sum("floodStatus" in path for path in paths) == 2
+    assert sum("serializedPolygons" in path for path in paths) == 4
+
+
+@pytest.mark.anyio
 async def test_a_failure_is_a_tool_error() -> None:
     async with mcp(server(broken=("floodStatus",))) as client:
         result = await client.call_tool("check_flood_forecast", {"latitude": LAT, "longitude": LNG})

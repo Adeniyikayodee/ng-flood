@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 import sys
 from importlib.metadata import version
+from threading import Lock
+from time import monotonic
 from typing import Annotated, Any
 
 import httpx
@@ -18,7 +20,12 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from .assess import Assessment
 from .client import Client, Failure
+from .snapshot import Snapshot
+
+REUSE_S = 600.0
+"""Seconds one download of the forecasts serves every call."""
 
 INSTRUCTIONS = (
     "Checks a coordinate in Nigeria against Google's flood forecasts. A verdict of NONE "
@@ -33,6 +40,20 @@ def create_server(
     google_key: str, nipost_key: str | None = None, http: httpx.Client | None = None
 ) -> MCPServer[Any]:
     """Build the server. Pass `http` to route calls through your own client, as tests do."""
+    client = Client(google_key, nipost_key, http=http)
+    cache: list[tuple[float, Snapshot]] = []
+    lock = Lock()
+
+    def assess(lat: float, lng: float) -> Assessment | Failure:
+        with lock:
+            if not cache or monotonic() - cache[0][0] > REUSE_S:
+                snapshot = client.fetch()
+                if isinstance(snapshot, Failure):
+                    return snapshot
+                cache[:] = [(monotonic(), snapshot)]
+            found = client.assess_many([(lat, lng)], None, cache[0][1])
+            return found if isinstance(found, Failure) else found[0]
+
     server: MCPServer[Any] = MCPServer(
         name="ng-flood",
         title="Nigeria Flood Forecast",
@@ -55,8 +76,7 @@ def create_server(
     ) -> dict[str, Any]:
         """Return the verdict (FORECAST, WATCH, NONE or UNKNOWN), the riverine and flash flood
         findings, any gaps in the data, and the NIPOST postcode area when a key is set."""
-        with Client(google_key, nipost_key, http=http) as client:
-            result = await to_thread.run_sync(client.assess, latitude, longitude)
+        result = await to_thread.run_sync(assess, latitude, longitude)
         if isinstance(result, Failure):
             raise ToolError(str(result))
         return result.as_dict()
